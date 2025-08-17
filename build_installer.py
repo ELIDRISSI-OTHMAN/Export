@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple build script that works
+Simple PyInstaller build script that works
 """
 
 import os
@@ -16,148 +16,48 @@ def run_command(cmd, cwd=None):
     if result.returncode != 0:
         print(f"Error: {result.stderr}")
         return False
-    print(f"Success: {result.stdout}")
+    print("Success!")
     return True
 
-def install_build_dependencies():
-    """Install required build tools"""
-    print("Installing build dependencies...")
+def find_openslide_dlls():
+    """Find OpenSlide DLL files"""
+    dll_files = []
     
-    dependencies = [
-        "pyinstaller>=5.0",
+    # Search paths for OpenSlide DLLs
+    search_paths = [
+        Path(sys.prefix) / "Library" / "bin",
+        Path(sys.prefix) / "DLLs",
+        Path(sys.prefix) / "bin",
     ]
     
-    for dep in dependencies:
-        if not run_command([sys.executable, "-m", "pip", "install", dep]):
-            print(f"Failed to install {dep}")
-            return False
+    # Add conda environment paths
+    if 'CONDA_PREFIX' in os.environ:
+        conda_prefix = Path(os.environ['CONDA_PREFIX'])
+        search_paths.extend([
+            conda_prefix / "Library" / "bin",
+            conda_prefix / "DLLs",
+            conda_prefix / "bin",
+        ])
     
-    return True
-
-def create_simple_spec():
-    """Create a simple spec file that works"""
-    spec_content = '''# Simple spec file
-import sys
-from pathlib import Path
-
-block_cipher = None
-
-a = Analysis(
-    ['main.py'],
-    pathex=[],
-    binaries=[],
-    datas=[
-        ('src', 'src'),
-        ('README.md', '.'),
-    ],
-    hiddenimports=[
-        'PyQt6.QtCore',
-        'PyQt6.QtGui', 
-        'PyQt6.QtWidgets',
-        'PyQt6.QtOpenGLWidgets',
-        'PyQt6.sip',
-        'cv2',
-        'numpy',
-        'numpy.core',
-        'numpy.core._methods',
-        'numpy.lib.format',
-        'PIL',
-        'PIL.Image',
-        'openslide',
-        'openslide._convert',
-        'openslide.lowlevel',
-        'skimage',
-        'skimage.feature',
-        'skimage.transform',
-        'scipy',
-        'scipy.optimize',
-        'matplotlib',
-        'tifffile',
-    ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[
-        'tkinter',
-        'matplotlib.tests',
-        'numpy.tests',
-        'scipy.tests',
-    ],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-
-# Add OpenSlide binaries
-def find_openslide_dlls():
-    binaries = []
-    try:
-        import openslide
-        openslide_path = Path(openslide.__file__).parent
-        
-        # Search paths
-        search_paths = [
-            Path(sys.prefix) / "Library" / "bin",
-            Path(sys.prefix) / "DLLs",
-            openslide_path / "bin",
-            openslide_path / "_bin",
-        ]
-        
-        for path in search_paths:
-            if path.exists():
-                for dll in path.glob("*.dll"):
-                    if any(x in dll.name.lower() for x in ['openslide', 'slide', 'jpeg', 'png', 'tiff', 'openjp2']):
-                        binaries.append((str(dll), "."))
-                        print(f"Found DLL: {dll.name}")
-        
-    except Exception as e:
-        print(f"OpenSlide DLL search failed: {e}")
+    print("Searching for OpenSlide DLLs...")
     
-    return binaries
-
-openslide_binaries = find_openslide_dlls()
-a.binaries += openslide_binaries
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='TissueFragmentStitching',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='TissueFragmentStitching',
-)
-'''
+    for path in search_paths:
+        if path.exists():
+            print(f"  Checking: {path}")
+            for dll in path.glob("*.dll"):
+                dll_name = dll.name.lower()
+                if any(keyword in dll_name for keyword in [
+                    'openslide', 'slide', 'jpeg', 'png', 'tiff', 'openjp2', 
+                    'zlib', 'cairo', 'glib', 'gobject', 'gdk', 'pixbuf'
+                ]):
+                    dll_files.append(str(dll))
+                    print(f"    Found: {dll.name}")
     
-    with open('simple.spec', 'w', encoding='utf-8') as f:
-        f.write(spec_content)
-    
-    return True
+    print(f"Total OpenSlide-related DLLs found: {len(dll_files)}")
+    return dll_files
 
 def build_executable():
-    """Build the executable"""
+    """Build the executable using PyInstaller command line"""
     print("=== Building Executable ===")
     
     # Clean previous builds
@@ -166,12 +66,58 @@ def build_executable():
             shutil.rmtree(folder)
             print(f"Cleaned {folder}/")
     
-    # Create spec file
-    if not create_simple_spec():
-        return False
+    # Find OpenSlide DLLs
+    openslide_dlls = find_openslide_dlls()
     
-    # Build with PyInstaller
-    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "simple.spec"]
+    # Build PyInstaller command
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--onedir",
+        "--windowed",
+        "--name", "TissueFragmentStitching",
+        "--clean",
+        
+        # Add data files
+        "--add-data", "src;src",
+        "--add-data", "README.md;.",
+        
+        # Hidden imports
+        "--hidden-import", "PyQt6.QtCore",
+        "--hidden-import", "PyQt6.QtGui", 
+        "--hidden-import", "PyQt6.QtWidgets",
+        "--hidden-import", "PyQt6.QtOpenGLWidgets",
+        "--hidden-import", "PyQt6.sip",
+        "--hidden-import", "cv2",
+        "--hidden-import", "numpy",
+        "--hidden-import", "PIL",
+        "--hidden-import", "PIL.Image",
+        "--hidden-import", "openslide",
+        "--hidden-import", "openslide._convert",
+        "--hidden-import", "openslide.lowlevel",
+        "--hidden-import", "skimage",
+        "--hidden-import", "skimage.feature",
+        "--hidden-import", "skimage.transform",
+        "--hidden-import", "scipy",
+        "--hidden-import", "scipy.optimize",
+        "--hidden-import", "matplotlib",
+        "--hidden-import", "tifffile",
+        
+        # Exclude unnecessary modules
+        "--exclude-module", "tkinter",
+        "--exclude-module", "matplotlib.tests",
+        "--exclude-module", "numpy.tests",
+        "--exclude-module", "scipy.tests",
+        "--exclude-module", "torch",
+        "--exclude-module", "tensorflow",
+        
+        "main.py"
+    ]
+    
+    # Add OpenSlide DLLs
+    for dll in openslide_dlls:
+        cmd.extend(["--add-binary", f"{dll};."])
+    
+    # Run PyInstaller
     if not run_command(cmd):
         print("PyInstaller build failed")
         return False
@@ -220,11 +166,7 @@ Filename: "{app}\\TissueFragmentStitching.exe"; Description: "Launch Tissue Frag
 
 def main():
     """Main build function"""
-    print("=== Simple Build Script ===")
-    
-    # Install dependencies
-    if not install_build_dependencies():
-        return False
+    print("=== Simple PyInstaller Build ===")
     
     # Build executable
     if not build_executable():
@@ -237,8 +179,8 @@ def main():
     print("BUILD COMPLETE!")
     print("="*50)
     print("\nFiles created:")
-    print("   • dist/TissueFragmentStitching/ - Application files")
-    print("   • installer.iss - Inno Setup script")
+    print("   - dist/TissueFragmentStitching/ - Application files")
+    print("   - installer.iss - Inno Setup script")
     print("\nNext steps:")
     print("   1. Test: dist/TissueFragmentStitching/TissueFragmentStitching.exe")
     print("   2. Install Inno Setup from: https://jrsoftware.org/isinfo.php")
