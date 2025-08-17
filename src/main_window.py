@@ -400,37 +400,61 @@ class MainWindow(QMainWindow):
         
     def load_images(self):
         """Load tissue fragment images"""
-        file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
-        file_dialog.setNameFilter("Image files (*.tiff *.tif *.svs *.png *.jpg)")
-        
-        if file_dialog.exec():
-            file_paths = file_dialog.selectedFiles()
-            self.load_images_from_paths(file_paths)
+        try:
+            file_paths, _ = QFileDialog.getOpenFileNames(
+                self,
+                "Load Tissue Fragment Images",
+                "",
+                "Image files (*.tiff *.tif *.svs *.png *.jpg *.jpeg);;TIFF files (*.tiff *.tif);;All files (*.*)"
+            )
+            
+            if file_paths:
+                print(f"Selected files: {file_paths}")
+                self.load_images_from_paths(file_paths)
+            else:
+                print("No files selected")
+                
+        except Exception as e:
+            print(f"File dialog error: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open file dialog: {str(e)}")
             
     def load_images_from_paths(self, file_paths: List[str]):
         """Load images from file paths"""
+        print(f"Loading {len(file_paths)} files...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, len(file_paths))
         
         try:
             for i, file_path in enumerate(file_paths):
+                print(f"Loading file {i+1}/{len(file_paths)}: {file_path}")
                 self.progress_bar.setValue(i)
                 self.status_bar.showMessage(f"Loading {os.path.basename(file_path)}...")
                 
                 # Load image using image loader
-                image_data = self.image_loader.load_image(file_path)
-                print(f"Loaded image: {file_path} ({image_data.shape if image_data is not None else 'None'}) ////{os.path.basename(file_path)}")
-                if image_data is not None:
-                    # Create fragment from image
-                    fragment_id = self.fragment_manager.add_fragment_from_image(
-                        image_data, os.path.basename(file_path),file_path=file_path
-                    )
+                try:
+                    image_data = self.image_loader.load_image(file_path)
+                    print(f"Loaded image: {file_path} ({image_data.shape if image_data is not None else 'None'})")
+                    if image_data is not None:
+                        # Create fragment from image
+                        fragment_id = self.fragment_manager.add_fragment_from_image(
+                            image_data, os.path.basename(file_path), file_path=file_path
+                        )
+                        print(f"Created fragment: {fragment_id}")
+                    else:
+                        print(f"Failed to load image data from: {file_path}")
+                        QMessageBox.warning(self, "Warning", f"Could not load image: {os.path.basename(file_path)}")
+                except Exception as img_error:
+                    print(f"Error loading {file_path}: {img_error}")
+                    QMessageBox.warning(self, "Warning", f"Error loading {os.path.basename(file_path)}: {str(img_error)}")
+                    continue
                     
             self.progress_bar.setValue(len(file_paths))
-            self.status_bar.showMessage(f"Loaded {len(file_paths)} fragments", 3000)
+            loaded_count = len(self.fragment_manager.get_all_fragments())
+            self.status_bar.showMessage(f"Loaded {loaded_count} fragments", 3000)
+            print(f"Total fragments loaded: {loaded_count}")
             
         except Exception as e:
+            print(f"Load images error: {e}")
             QMessageBox.critical(self, "Error", f"Failed to load images: {str(e)}")
         finally:
             self.progress_bar.setVisible(False)
