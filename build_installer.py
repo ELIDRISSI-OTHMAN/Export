@@ -20,69 +20,27 @@ def run_command(cmd, cwd=None):
     return True
 
 def find_openslide_dlls():
-    """Find OpenSlide DLL files"""
-    dll_files = []  # Use list to store full paths
+    """Find ALL DLL files from virtual environment"""
+    dll_files = []
     
-    # Comprehensive search paths for OpenSlide DLLs
+    # Get all DLL locations in virtual environment
     search_paths = [
-        Path(sys.prefix) / "Library" / "bin",
-        Path(sys.prefix) / "Library" / "lib",
-        Path(sys.prefix) / "DLLs",
-        Path(sys.prefix) / "bin",
-        Path(sys.prefix) / "Lib" / "site-packages" / "openslide_bin",
+        Path(sys.executable).parent / "Library" / "bin",
+        Path(sys.executable).parent / "Library" / "lib", 
+        Path(sys.executable).parent / "DLLs",
+        Path(sys.executable).parent / "bin",
+        Path(sys.executable).parent / "Lib" / "site-packages",
     ]
     
-    # Add conda environment paths
-    if 'CONDA_PREFIX' in os.environ:
-        conda_prefix = Path(os.environ['CONDA_PREFIX'])
-        search_paths.extend([
-            conda_prefix / "Library" / "bin",
-            conda_prefix / "Library" / "lib", 
-            conda_prefix / "DLLs",
-            conda_prefix / "bin",
-            conda_prefix / "Lib" / "site-packages" / "openslide_bin",
-        ])
-    
-    # Add virtual environment paths
-    if 'VIRTUAL_ENV' in os.environ:
-        venv_prefix = Path(os.environ['VIRTUAL_ENV'])
-        search_paths.extend([
-            venv_prefix / "Library" / "bin",
-            venv_prefix / "Library" / "lib",
-            venv_prefix / "DLLs", 
-            venv_prefix / "bin",
-            venv_prefix / "Lib" / "site-packages" / "openslide_bin",
-        ])
-    
-    # Try to find openslide package location
-    try:
-        import openslide
-        openslide_path = Path(openslide.__file__).parent
-        search_paths.extend([
-            openslide_path,
-            openslide_path / "bin",
-            openslide_path / "_bin",
-            openslide_path.parent / "openslide_bin",
-        ])
-        print(f"Found openslide package at: {openslide_path}")
-    except ImportError:
-        print("OpenSlide package not found in Python path")
-    
-    print("Searching for OpenSlide DLLs...")
+    print("Searching for ALL DLLs in virtual environment...")
     
     for path in search_paths:
         if path.exists():
             print(f"  Checking: {path}")
-            for dll in path.glob("*.dll"):
-                dll_name = dll.name.lower()
-                # More comprehensive DLL matching
-                if (any(keyword in dll_name for keyword in [
-                    'openslide', 'slide', 'jpeg', 'png', 'tiff', 'openjp2',
-                    'zlib', 'cairo', 'glib', 'gobject', 'gdk', 'pixbuf',
-                    'xml2', 'iconv', 'intl', 'ffi', 'pcre', 'harfbuzz', 'crypto', 'ssl', 'expat', 'lzma', 'bz2'
-                ]) or dll_name.startswith('lib')):
-                    dll_files.append(str(dll))
-                    print(f"    Found: {dll.name}")
+            # Find ALL DLLs recursively
+            for dll in path.rglob("*.dll"):
+                dll_files.append(str(dll))
+                print(f"    Found: {dll.name}")
     
     # Remove duplicates while preserving order
     seen = set()
@@ -92,7 +50,7 @@ def find_openslide_dlls():
             seen.add(dll)
             unique_dlls.append(dll)
     
-    print(f"Total unique OpenSlide-related DLLs found: {len(unique_dlls)}")
+    print(f"Total unique DLLs found: {len(unique_dlls)}")
     return unique_dlls
     
 
@@ -129,7 +87,7 @@ def build_executable():
     
     # Find OpenSlide DLLs
     openslide_dlls = find_openslide_dlls()
-    print(f"OpenSlide DLLs to include: {len(openslide_dlls)}")
+    print(f"Total DLLs to include: {len(openslide_dlls)}")
     
     # Find PyQt6 installation path
     try:
@@ -216,12 +174,12 @@ def build_executable():
     
     # Add OpenSlide DLLs
     if openslide_dlls and len(openslide_dlls) > 0:
-        print("Adding OpenSlide DLLs to build:")
+        print("Adding ALL DLLs to build:")
         for dll in openslide_dlls:
             print(f"  Adding: {dll}")
-            cmd.extend(["--add-binary", f"{dll};openslide_bin"])
+            cmd.extend(["--add-binary", f"{dll};."])
     else:
-        print("WARNING: No OpenSlide DLLs found - OpenSlide functionality may not work")
+        print("WARNING: No DLLs found")
     
     # Run PyInstaller
     if not run_command(cmd):
@@ -238,12 +196,12 @@ def build_executable():
         print(f"Executable created: {exe_path}")
         
         # Verify OpenSlide DLLs are in the right place
-        openslide_bin_dir = "dist/TissueFragmentStitching/openslide_bin"
-        if os.path.exists(openslide_bin_dir):
-            dll_count = len([f for f in os.listdir(openslide_bin_dir) if f.endswith('.dll')])
-            print(f"OpenSlide DLLs copied: {dll_count}")
+        dist_dir = "dist/TissueFragmentStitching"
+        if os.path.exists(dist_dir):
+            dll_count = len([f for f in os.listdir(dist_dir) if f.endswith('.dll')])
+            print(f"DLLs copied to dist: {dll_count}")
         else:
-            print("WARNING: openslide_bin directory not found in dist")
+            print("WARNING: dist directory not found")
             
         return True
     else:
