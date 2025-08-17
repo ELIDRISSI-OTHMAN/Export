@@ -21,7 +21,7 @@ def run_command(cmd, cwd=None):
 
 def find_openslide_dlls():
     """Find OpenSlide DLL files"""
-    dll_files = {}  # Use dict to avoid duplicates
+    dll_files = []  # Use list to store full paths
     
     # Comprehensive search paths for OpenSlide DLLs
     search_paths = [
@@ -79,10 +79,21 @@ def find_openslide_dlls():
                 if (any(keyword in dll_name for keyword in [
                     'openslide', 'slide', 'jpeg', 'png', 'tiff', 'openjp2',
                     'zlib', 'cairo', 'glib', 'gobject', 'gdk', 'pixbuf',
-                    'xml2', 'iconv', 'intl', 'ffi', 'pcre', 'harfbuzz'
+                    'xml2', 'iconv', 'intl', 'ffi', 'pcre', 'harfbuzz', 'crypto', 'ssl', 'expat', 'lzma', 'bz2'
                 ]) or dll_name.startswith('lib')):
-                    dll_files[dll.name] = str(dll)
+                    dll_files.append(str(dll))
                     print(f"    Found: {dll.name}")
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_dlls = []
+    for dll in dll_files:
+        if dll not in seen:
+            seen.add(dll)
+            unique_dlls.append(dll)
+    
+    print(f"Total unique OpenSlide-related DLLs found: {len(unique_dlls)}")
+    return unique_dlls
     
 
 def build_executable():
@@ -118,6 +129,7 @@ def build_executable():
     
     # Find OpenSlide DLLs
     openslide_dlls = find_openslide_dlls()
+    print(f"OpenSlide DLLs to include: {len(openslide_dlls)}")
     
     # Find PyQt6 installation path
     try:
@@ -203,9 +215,11 @@ def build_executable():
     ]
     
     # Add OpenSlide DLLs
-    if openslide_dlls:
+    if openslide_dlls and len(openslide_dlls) > 0:
+        print("Adding OpenSlide DLLs to build:")
         for dll in openslide_dlls:
-            cmd.extend(["--add-binary", f"{dll};."])
+            print(f"  Adding: {dll}")
+            cmd.extend(["--add-binary", f"{dll};openslide_bin"])
     else:
         print("WARNING: No OpenSlide DLLs found - OpenSlide functionality may not work")
     
