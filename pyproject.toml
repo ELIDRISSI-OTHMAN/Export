@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tissue-fragment-stitching"
+version = "1.0.0"
+description = "Professional desktop application for tissue fragment visualization and stitching"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Scientific Imaging Lab", email = "contact@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "PyQt6==6.6.1",
+    "opencv-python==4.8.1.78",
+    "numpy==1.24.3",
+    "Pillow==10.1.0",
+    "openslide-python==1.3.1",
+    "scikit-image==0.22.0",
+    "scipy==1.11.4",
+    "matplotlib==3.8.2",
+    "tifffile==2023.9.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/tissue-fragment-stitching"
+Repository = "https://github.com/yourusername/tissue-fragment-stitching.git"
+Issues = "https://github.com/yourusername/tissue-fragment-stitching/issues"
+
+[project.scripts]
+tissue-fragment-stitching = "main:main"
+
+[tool.setuptools]
+packages = ["src"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.txt", "*.yml", "*.yaml"]

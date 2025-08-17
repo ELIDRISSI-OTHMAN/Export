@@ -1,0 +1,11 @@
+# Include additional files in the package
+include README.md
+include README_FR.md
+include requirements.txt
+include LICENSE
+recursive-include src *.py
+recursive-include src *.ui
+recursive-include src *.qrc
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store
