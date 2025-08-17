@@ -28,6 +28,7 @@ def install_build_dependencies():
     dependencies = [
         "pyinstaller>=5.0",
         "auto-py-to-exe",  # GUI for PyInstaller
+        "pywin32; sys_platform=='win32'",  # Windows-specific
     ]
     
     for dep in dependencies:
@@ -35,18 +36,51 @@ def install_build_dependencies():
             print(f"Failed to install {dep}")
             return False
     
+    # Install OpenSlide separately on Windows
+    if platform.system().lower() == "windows":
+        print("Installing OpenSlide for Windows...")
+        if not run_command([sys.executable, "-m", "pip", "install", "openslide-python", "--force-reinstall"]):
+            print("Warning: OpenSlide installation may have issues")
+    
     return True
 
 def create_pyinstaller_spec():
     """Create PyInstaller spec file for consistent builds"""
     spec_content = '''# -*- mode: python ; coding: utf-8 -*-
+import os
+import sys
+from pathlib import Path
+
+# Find OpenSlide DLLs on Windows
+openslide_binaries = []
+if sys.platform == 'win32':
+    try:
+        import openslide
+        openslide_path = Path(openslide.__file__).parent
+        dll_path = openslide_path / 'bin'
+        if dll_path.exists():
+            for dll_file in dll_path.glob('*.dll'):
+                openslide_binaries.append((str(dll_file), 'openslide_bin'))
+        print(f"Found OpenSlide DLLs: {len(openslide_binaries)}")
+    except ImportError:
+        print("OpenSlide not found - some features may not work")
+
+# Find OpenCV DLLs
+opencv_binaries = []
+try:
+    import cv2
+    cv2_path = Path(cv2.__file__).parent
+    for dll_file in cv2_path.glob('*.dll'):
+        opencv_binaries.append((str(dll_file), '.'))
+except ImportError:
+    pass
 
 block_cipher = None
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=openslide_binaries + opencv_binaries,
     datas=[
         ('src', 'src'),
         ('README.md', '.'),
@@ -62,6 +96,8 @@ a = Analysis(
         'PIL',
         'PIL.Image',
         'openslide',
+        'openslide._convert',
+        'openslide.lowlevel',
         'skimage',
         'skimage.feature',
         'skimage.transform',
@@ -69,6 +105,8 @@ a = Analysis(
         'scipy.optimize',
         'matplotlib',
         'tifffile',
+        'ctypes',
+        'ctypes.util',
     ],
     hookspath=[],
     hooksconfig={},
@@ -78,6 +116,7 @@ a = Analysis(
         'matplotlib.tests',
         'numpy.tests',
         'scipy.tests',
+        'PIL.ImageTk',  # Tkinter dependency
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -127,17 +166,35 @@ def build_executable():
     """Build the executable using PyInstaller"""
     print("\n=== Building Executable ===")
     
+    # Check OpenSlide installation
+    try:
+        import openslide
+        print(f"✓ OpenSlide found at: {openslide.__file__}")
+    except ImportError:
+        print("⚠️  OpenSlide not found - some features may not work")
+    
     # Create spec file
     if not create_pyinstaller_spec():
         return False
     
     # Build with PyInstaller
-    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "app.spec"]
+    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "--log-level=INFO", "app.spec"]
     if not run_command(cmd):
         print("PyInstaller build failed")
         return False
     
     print("✓ Executable built successfully")
+    
+    # Verify OpenSlide DLLs are included
+    if platform.system().lower() == "windows":
+        dist_path = Path("dist/TissueFragmentStitching")
+        openslide_bin = dist_path / "openslide_bin"
+        if openslide_bin.exists():
+            dll_count = len(list(openslide_bin.glob("*.dll")))
+            print(f"✓ OpenSlide DLLs included: {dll_count}")
+        else:
+            print("⚠️  OpenSlide DLLs may be missing")
+    
     return True
 
 def create_windows_installer():
