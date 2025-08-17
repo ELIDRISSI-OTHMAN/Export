@@ -249,32 +249,83 @@ class ImageLoader:
         }
         
         try:
-            if OPENSLIDE_AVAILABLE and self._is_openslide_compatible(file_path):
+            # Try tifffile first for TIFF files
+            if file_path.lower().endswith(('.tif', '.tiff')):
+                try:
+                    import tifffile
+                    with tifffile.TiffFile(file_path) as tif:
+                        if hasattr(tif, 'series') and tif.series:
+                            series = tif.series[0]
+                            if hasattr(series, 'levels') and len(series.levels) > 1:
+                                info['levels'] = list(range(len(series.levels)))
+                                info['level_dimensions'] = [(level.shape[1], level.shape[0]) for level in series.levels]
+                                info['level_downsamples'] = [1.0 * (2 ** i) for i in range(len(series.levels))]
+                                info['has_pyramid'] = True
+                            else:
+                                # Single level TIFF
+                                if tif.pages:
+                                    page = tif.pages[0]
+                                    info['levels'] = [0]
+                                    info['level_dimensions'] = [(page.shape[1], page.shape[0])]
+                                    info['level_downsamples'] = [1.0]
+                                    info['has_pyramid'] = False
+                        else:
+                            # Fallback for problematic TIFF files
+                            if tif.pages:
+                                page = tif.pages[0]
+                                info['levels'] = [0]
+                                info['level_dimensions'] = [(page.shape[1], page.shape[0])]
+                                info['level_downsamples'] = [1.0]
+                                info['has_pyramid'] = False
+                except Exception as tiff_error:
+                    self.logger.warning(f"tifffile failed for {file_path}: {tiff_error}")
+                    # Try with PIL as final fallback
+                    try:
+                        from PIL import Image
+                        with Image.open(file_path) as img:
+                            info['levels'] = [0]
+                            info['level_dimensions'] = [(img.width, img.height)]
+                            info['level_downsamples'] = [1.0]
+                            info['has_pyramid'] = False
+                    except Exception as pil_error:
+                        self.logger.warning(f"PIL also failed for {file_path}: {pil_error}")
+                        raise
+            
+            elif OPENSLIDE_AVAILABLE and self._is_openslide_compatible(file_path):
+                # Use OpenSlide for supported formats
                 slide = openslide.OpenSlide(file_path)
-                
                 info['levels'] = list(range(slide.level_count))
                 info['level_dimensions'] = slide.level_dimensions
                 info['level_downsamples'] = slide.level_downsamples
                 info['has_pyramid'] = slide.level_count > 1
-                
                 slide.close()
             else:
-                # Fallback to tifffile
-                import tifffile
-                with tifffile.TiffFile(file_path) as tif:
-                    if hasattr(tif, 'series') and tif.series:
-                        series = tif.series[0]
-                        if hasattr(series, 'levels') and len(series.levels) > 1:
-                            info['levels'] = list(range(len(series.levels)))
-                            info['level_dimensions'] = [(level.shape[1], level.shape[0]) for level in series.levels]
-                            info['level_downsamples'] = [1.0 * (2 ** i) for i in range(len(series.levels))]
-                            info['has_pyramid'] = True
-                        else:
-                            # Single level
-                            info['levels'] = [0]
-                            info['level_dimensions'] = [(tif.pages[0].shape[1], tif.pages[0].shape[0])]
-                            info['level_downsamples'] = [1.0]
-                            info['has_pyramid'] = False
+                # For other formats, use PIL
+                from PIL import Image
+                with Image.open(file_path) as img:
+                    info['levels'] = [0]
+                    info['level_dimensions'] = [(img.width, img.height)]
+                    info['level_downsamples'] = [1.0]
+                    info['has_pyramid'] = False
+                        
+        except Exception as e:
+            self.logger.error(f"Could not get pyramid info for {file_path}: {e}")
+            # Return minimal fallback info
+            try:
+                from PIL import Image
+                with Image.open(file_path) as img:
+                    info['levels'] = [0]
+                    info['level_dimensions'] = [(img.width, img.height)]
+                    info['level_downsamples'] = [1.0]
+                    info['has_pyramid'] = False
+            except:
+                # Final fallback with dummy dimensions
+                info['levels'] = [0]
+                info['level_dimensions'] = [(1024, 1024)]  # Dummy size
+                info['level_downsamples'] = [1.0]
+                info['has_pyramid'] = False
+        
+        return info
                     else:
                         # Single level fallback
                         info['levels'] = [0]

@@ -236,23 +236,25 @@ class PyramidalExporter:
     def _load_fragment_pyvips(self, fragment: Fragment, level: int) -> Optional['pyvips.Image']:
         """Load fragment at specific level using pyvips with transformations"""
         try:
-            # Load image at specified level
-            if fragment.file_path.lower().endswith(('.tif', '.tiff')):
-                # For TIFF files, try to load specific level
+            # Load image with proper error handling
+            try:
+                # Try to load specific page/level first
+                image = pyvips.Image.new_from_file(fragment.file_path, page=level)
+            except:
+                # Fallback to level 0
                 try:
-                    image = pyvips.Image.new_from_file(fragment.file_path, page=level)
-                except:
-                    # Fallback to level 0 and downsample
                     image = pyvips.Image.new_from_file(fragment.file_path, page=0)
-                    if level > 0:
-                        scale = 1.0 / (2 ** level)
-                        image = image.resize(scale)
-            else:
-                # For other formats, load and downsample if needed
-                image = pyvips.Image.new_from_file(fragment.file_path)
+                except:
+                    # Final fallback - load without page specification
+                    image = pyvips.Image.new_from_file(fragment.file_path)
+                
+                # Downsample if needed
                 if level > 0:
                     scale = 1.0 / (2 ** level)
                     image = image.resize(scale)
+            
+            # Fix color space issues
+            image = self._fix_pyvips_colorspace(image)
             
             # Apply transformations
             image = self._apply_pyvips_transforms(image, fragment)
@@ -262,6 +264,64 @@ class PyramidalExporter:
         except Exception as e:
             self.logger.error(f"Failed to load fragment {fragment.name} with pyvips: {e}")
             return None
+    
+    def _fix_pyvips_colorspace(self, image: 'pyvips.Image') -> 'pyvips.Image':
+        """Fix color space issues with pyvips images"""
+        try:
+            # Handle different band configurations
+            if image.bands == 1:
+                # Grayscale - convert to RGB
+                image = image.colourspace('srgb')
+                # Add alpha channel
+                alpha = pyvips.Image.black(image.width, image.height) + 255
+                image = image.bandjoin(alpha)
+            elif image.bands == 2:
+                # Grayscale + Alpha - convert to RGBA
+                gray = image.extract_band(0)
+                alpha = image.extract_band(1)
+                rgb = gray.colourspace('srgb')
+                image = rgb.bandjoin(alpha)
+            elif image.bands == 3:
+                # RGB - ensure proper colorspace and add alpha
+                try:
+                    # Try to convert to sRGB if not already
+                    if image.interpretation != 'srgb':
+                        image = image.colourspace('srgb')
+                except:
+                    # If colorspace conversion fails, assume it's already RGB
+                    pass
+                # Add alpha channel
+                alpha = pyvips.Image.black(image.width, image.height) + 255
+                image = image.bandjoin(alpha)
+            elif image.bands == 4:
+                # RGBA - ensure proper colorspace
+                try:
+                    rgb = image.extract_band(0, n=3)
+                    alpha = image.extract_band(3)
+                    if rgb.interpretation != 'srgb':
+                        rgb = rgb.colourspace('srgb')
+                    image = rgb.bandjoin(alpha)
+                except:
+                    # If colorspace conversion fails, keep as is
+                    pass
+            else:
+                # More than 4 bands - extract first 3 as RGB and create alpha
+                self.logger.warning(f"Image has {image.bands} bands, extracting first 3 as RGB")
+                rgb = image.extract_band(0, n=3)
+                try:
+                    if rgb.interpretation != 'srgb':
+                        rgb = rgb.colourspace('srgb')
+                except:
+                    pass
+                alpha = pyvips.Image.black(image.width, image.height) + 255
+                image = rgb.bandjoin(alpha)
+            
+            return image
+            
+        except Exception as e:
+            self.logger.error(f"Failed to fix colorspace: {e}")
+            # Return original image if fixing fails
+            return image
     
     def _apply_pyvips_transforms(self, image: 'pyvips.Image', fragment: Fragment) -> 'pyvips.Image':
         """Apply transformations to pyvips image"""
