@@ -193,6 +193,7 @@ class ControlPanel(QWidget):
         if direction == 'cw':
             self.group_rotate_cw.emit()
         elif direction == 'ccw':
+            self.group_rotate_ccw.emit()
     
     def reset_group_transforms(self):
         """Reset all group fragment transforms"""
