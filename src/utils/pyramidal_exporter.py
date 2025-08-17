@@ -268,60 +268,100 @@ class PyramidalExporter:
     def _fix_pyvips_colorspace(self, image: 'pyvips.Image') -> 'pyvips.Image':
         """Fix color space issues with pyvips images"""
         try:
-            # Handle different band configurations
-            if image.bands == 1:
-                # Grayscale - convert to RGB
-                image = image.colourspace('srgb')
-                # Add alpha channel
-                alpha = pyvips.Image.black(image.width, image.height) + 255
-                image = image.bandjoin(alpha)
-            elif image.bands == 2:
-                # Grayscale + Alpha - convert to RGBA
-                gray = image.extract_band(0)
-                alpha = image.extract_band(1)
-                rgb = gray.colourspace('srgb')
-                image = rgb.bandjoin(alpha)
-            elif image.bands == 3:
-                # RGB - ensure proper colorspace and add alpha
-                try:
-                    # Try to convert to sRGB if not already
-                    if image.interpretation != 'srgb':
-                        image = image.colourspace('srgb')
-                except:
-                    # If colorspace conversion fails, assume it's already RGB
-                    pass
-                # Add alpha channel
-                alpha = pyvips.Image.black(image.width, image.height) + 255
-                image = image.bandjoin(alpha)
-            elif image.bands == 4:
-                # RGBA - ensure proper colorspace
-                try:
+            # Get current interpretation
+            current_interpretation = image.interpretation
+            self.logger.info(f"Image interpretation: {current_interpretation}, bands: {image.bands}")
+            
+            # Handle multiband and other problematic interpretations
+            if current_interpretation in ['multiband', 'matrix', 'fourier']:
+                # For multiband images, manually create RGB interpretation
+                if image.bands == 1:
+                    # Single band - replicate to RGB
+                    band = image.extract_band(0)
+                    image = band.bandjoin([band, band])
+                    image = image.copy(interpretation='srgb')
+                    # Add alpha
+                    alpha = pyvips.Image.black(image.width, image.height) + 255
+                    image = image.bandjoin(alpha)
+                elif image.bands == 3:
+                    # 3 bands - assume RGB
+                    image = image.copy(interpretation='srgb')
+                    # Add alpha
+                    alpha = pyvips.Image.black(image.width, image.height) + 255
+                    image = image.bandjoin(alpha)
+                elif image.bands == 4:
+                    # 4 bands - assume RGBA
                     rgb = image.extract_band(0, n=3)
                     alpha = image.extract_band(3)
-                    if rgb.interpretation != 'srgb':
-                        rgb = rgb.colourspace('srgb')
+                    rgb = rgb.copy(interpretation='srgb')
                     image = rgb.bandjoin(alpha)
-                except:
-                    # If colorspace conversion fails, keep as is
-                    pass
+                else:
+                    # More bands - take first 3 as RGB
+                    rgb = image.extract_band(0, n=3)
+                    rgb = rgb.copy(interpretation='srgb')
+                    alpha = pyvips.Image.black(image.width, image.height) + 255
+                    image = rgb.bandjoin(alpha)
             else:
-                # More than 4 bands - extract first 3 as RGB and create alpha
-                self.logger.warning(f"Image has {image.bands} bands, extracting first 3 as RGB")
-                rgb = image.extract_band(0, n=3)
-                try:
-                    if rgb.interpretation != 'srgb':
-                        rgb = rgb.colourspace('srgb')
-                except:
-                    pass
-                alpha = pyvips.Image.black(image.width, image.height) + 255
-                image = rgb.bandjoin(alpha)
+                # Handle standard interpretations
+                if image.bands == 1:
+                    # Grayscale - convert to RGB
+                    try:
+                        image = image.colourspace('srgb')
+                    except:
+                        # Manual conversion if colourspace fails
+                        image = image.bandjoin([image, image])
+                        image = image.copy(interpretation='srgb')
+                    # Add alpha channel
+                    alpha = pyvips.Image.black(image.width, image.height) + 255
+                    image = image.bandjoin(alpha)
+                elif image.bands == 2:
+                    # Grayscale + Alpha - convert to RGBA
+                    gray = image.extract_band(0)
+                    alpha = image.extract_band(1)
+                    try:
+                        rgb = gray.colourspace('srgb')
+                    except:
+                        rgb = gray.bandjoin([gray, gray])
+                        rgb = rgb.copy(interpretation='srgb')
+                    image = rgb.bandjoin(alpha)
+                elif image.bands == 3:
+                    # RGB - ensure proper colorspace and add alpha
+                    try:
+                        if image.interpretation != 'srgb':
+                            image = image.colourspace('srgb')
+                    except:
+                        # If colorspace conversion fails, assume it's already RGB
+                        image = image.copy(interpretation='srgb')
+                    # Add alpha channel
+                    alpha = pyvips.Image.black(image.width, image.height) + 255
+                    image = image.bandjoin(alpha)
+                elif image.bands == 4:
+                    # RGBA - ensure proper colorspace
+                    try:
+                        rgb = image.extract_band(0, n=3)
+                        alpha = image.extract_band(3)
+                        if rgb.interpretation != 'srgb':
+                            rgb = rgb.colourspace('srgb')
+                        image = rgb.bandjoin(alpha)
+                    except:
+                        # If colorspace conversion fails, manually set interpretation
+                        rgb = image.extract_band(0, n=3)
+                        alpha = image.extract_band(3)
+                        rgb = rgb.copy(interpretation='srgb')
+                        image = rgb.bandjoin(alpha)
+                else:
+                    # More than 4 bands - extract first 3 as RGB and create alpha
+                    self.logger.warning(f"Image has {image.bands} bands, extracting first 3 as RGB")
+                    rgb = image.extract_band(0, n=3)
+                    rgb = rgb.copy(interpretation='srgb')
+                    alpha = pyvips.Image.black(image.width, image.height) + 255
+                    image = rgb.bandjoin(alpha)
+            
+            self.logger.info(f"Fixed image interpretation: {image.interpretation}, bands: {image.bands}")
             
             return image
             
         except Exception as e:
-            self.logger.error(f"Failed to fix colorspace: {e}")
-            # Return original image if fixing fails
-            return image
     
     def _apply_pyvips_transforms(self, image: 'pyvips.Image', fragment: Fragment) -> 'pyvips.Image':
         """Apply transformations to pyvips image"""
