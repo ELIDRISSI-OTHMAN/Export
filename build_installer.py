@@ -60,6 +60,23 @@ def build_executable():
     """Build the executable using PyInstaller command line"""
     print("=== Building Executable ===")
     
+    # Check if we're in the correct virtual environment
+    if 'VIRTUAL_ENV' in os.environ:
+        venv_path = os.environ['VIRTUAL_ENV']
+        print(f"Using virtual environment: {venv_path}")
+    elif 'CONDA_DEFAULT_ENV' in os.environ:
+        env_name = os.environ['CONDA_DEFAULT_ENV']
+        print(f"Using conda environment: {env_name}")
+        if env_name != 'stitcher':
+            print("WARNING: You should activate the 'stitcher' environment first!")
+            print("Run: conda activate stitcher")
+            return False
+    else:
+        print("WARNING: No virtual environment detected!")
+        print("Please activate your 'stitcher' environment first:")
+        print("Run: conda activate stitcher")
+        return False
+    
     # Clean previous builds
     for folder in ['build', 'dist', '__pycache__']:
         if os.path.exists(folder):
@@ -83,8 +100,15 @@ def build_executable():
         import PyQt6
         pyqt6_path = os.path.dirname(PyQt6.__file__)
         print(f"PyQt6 path: {pyqt6_path}")
+        
+        # Verify PyQt6 is working
+        from PyQt6.QtCore import QCoreApplication
+        print("PyQt6 import test: SUCCESS")
     except ImportError:
-        print("ERROR: PyQt6 not found!")
+        print(f"ERROR: PyQt6 not found! {e}")
+        print("Make sure you're in the 'stitcher' environment:")
+        print("  conda activate stitcher")
+        print("  pip install PyQt6")
         return False
     
     # Build PyInstaller command
