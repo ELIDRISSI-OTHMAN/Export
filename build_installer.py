@@ -78,6 +78,15 @@ def build_executable():
     # Find OpenSlide DLLs
     openslide_dlls = find_openslide_dlls()
     
+    # Find PyQt6 installation path
+    try:
+        import PyQt6
+        pyqt6_path = os.path.dirname(PyQt6.__file__)
+        print(f"PyQt6 path: {pyqt6_path}")
+    except ImportError:
+        print("ERROR: PyQt6 not found!")
+        return False
+    
     # Build PyInstaller command
     cmd = [
         sys.executable, "-m", "PyInstaller",
@@ -90,10 +99,18 @@ def build_executable():
         "--paths", python_dir,
         "--paths", python_dlls_dir,
         "--paths", python_lib_dir,
+        "--paths", pyqt6_path,
         
         # Add data files
         "--add-data", "src;src",
         "--add-data", "README.md;.",
+        
+        # Collect all PyQt6 modules
+        "--collect-all", "PyQt6",
+        "--collect-all", "PyQt6.QtCore",
+        "--collect-all", "PyQt6.QtGui", 
+        "--collect-all", "PyQt6.QtWidgets",
+        "--collect-all", "PyQt6.QtOpenGLWidgets",
         
         # Hidden imports
         "--hidden-import", "PyQt6.QtCore",
@@ -101,10 +118,13 @@ def build_executable():
         "--hidden-import", "PyQt6.QtWidgets",
         "--hidden-import", "PyQt6.QtOpenGLWidgets",
         "--hidden-import", "PyQt6.sip",
+        "--hidden-import", "PyQt6.QtPrintSupport",
+        "--hidden-import", "sip",
         "--hidden-import", "cv2",
         "--hidden-import", "numpy",
         "--hidden-import", "PIL",
         "--hidden-import", "PIL.Image",
+        "--hidden-import", "PIL.ImageTk",
         "--hidden-import", "openslide",
         "--hidden-import", "openslide._convert",
         "--hidden-import", "openslide.lowlevel",
@@ -115,6 +135,7 @@ def build_executable():
         "--hidden-import", "scipy.optimize",
         "--hidden-import", "matplotlib",
         "--hidden-import", "tifffile",
+        "--hidden-import", "pkg_resources.py2_warn",
         
         # Exclude unnecessary modules
         "--exclude-module", "tkinter",
