@@ -298,7 +298,7 @@ class ImageLoader:
                 info['level_dimensions'] = slide.level_dimensions
                 info['level_downsamples'] = slide.level_downsamples
                 info['has_pyramid'] = slide.level_count > 1
-                slide.close()
+            
             else:
                 # For other formats, use PIL
                 from PIL import Image
@@ -309,7 +309,7 @@ class ImageLoader:
                     info['has_pyramid'] = False
                         
         except Exception as e:
-            self.logger.error(f"Could not get pyramid info for {file_path}: {e}")
+            print(f"Could not get pyramid info for {file_path}: {e}")
             # Return minimal fallback info
             try:
                 from PIL import Image
@@ -324,22 +324,6 @@ class ImageLoader:
                 info['level_dimensions'] = [(1024, 1024)]  # Dummy size
                 info['level_downsamples'] = [1.0]
                 info['has_pyramid'] = False
-        
-        return info
-                    else:
-                        # Single level fallback
-                        info['levels'] = [0]
-                        info['level_dimensions'] = [(tif.pages[0].shape[1], tif.pages[0].shape[0])]
-                        info['level_downsamples'] = [1.0]
-                        info['has_pyramid'] = False
-                        
-        except Exception as e:
-            print(f"Warning: Could not get pyramid info for {file_path}: {e}")
-            # Return minimal info
-            info['levels'] = [0]
-            info['level_dimensions'] = [(0, 0)]
-            info['level_downsamples'] = [1.0]
-            info['has_pyramid'] = False
             
         return info
     
