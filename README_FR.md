@@ -56,11 +56,8 @@ Niveau 3: 1/8 résolution (ex: 5x, 2.0 µm/pixel)
 ```
 
 #### **Outils de Prétraitement Recommandés :**
-- **QuPath** : Segmentation et export
-- **ImageJ/Fiji** : Traitement d'images
-- **OpenSlide** : Manipulation de fichiers pyramidaux
-- **ASAP** : Annotation et segmentation
 - **Scripts Python personnalisés** avec OpenCV et scikit-image
+- **OpenSlide** : Manipulation de fichiers pyramidaux (déjà inclus dans les dépendances)
 
 #### **Exemple de Pipeline de Prétraitement :**
 
@@ -232,7 +229,6 @@ L'application supporte les formats suivants :
 - **SVS** : Fichiers Aperio ScanScope
 - **PNG** : Images PNG standard
 - **JPG/JPEG** : Images JPEG standard
-- **NDPI** : Fichiers Hamamatsu (si OpenSlide disponible)
 
 ### Procédure de Chargement
 
@@ -460,7 +456,7 @@ L'application propose plusieurs options d'exportation :
 
 **Caractéristiques :**
 - Plusieurs niveaux de résolution
-- Compatible avec QuPath, ASAP, OpenSlide
+- Compatible avec OpenSlide et autres visualiseurs d'images pyramidales
 - Fichier plus volumineux, temps d'exportation plus long
 
 **Utilisation :**
