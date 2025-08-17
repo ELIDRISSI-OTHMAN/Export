@@ -107,15 +107,14 @@ class MainWindow(QMainWindow):
         
         # Control panel connections
         self.control_panel.transform_requested.connect(self.apply_transform)
-        self.control_panel.group_rotate_cw.connect(lambda: self.apply_group_rotation(90))
-        self.control_panel.group_rotate_ccw.connect(lambda: self.apply_group_rotation(-90))
-        self.control_panel.group_translate.connect(self.apply_group_translation)
+        self.control_panel.group_rotate_requested.connect(self.apply_group_rotation)
+        self.control_panel.group_translate_requested.connect(self.apply_group_translation)
         self.control_panel.reset_transform_requested.connect(self.reset_fragment_transform)
         
         # Canvas connections
         self.canvas_widget.fragment_selected.connect(self.select_fragment)
         self.canvas_widget.fragment_moved.connect(self.update_fragment_position)
-        self.canvas_widget.group_moved.connect(self.apply_group_translation)
+        self.canvas_widget.group_moved.connect(self.fragment_manager.translate_group)
         self.canvas_widget.point_add_requested.connect(self.add_labeled_point)
         self.canvas_widget.group_selected.connect(self.on_group_selected)
         
@@ -165,47 +164,50 @@ class MainWindow(QMainWindow):
     
     def on_selection_changed(self):
         """Handle selection changes from fragment manager"""
-        selected_ids = self.fragment_manager.get_selected_fragment_ids()
+        print("MainWindow: Selection changed")
         
-        # Update canvas selection
-        if len(selected_ids) > 1:
-            self.canvas_widget.set_selected_fragment_ids(selected_ids)
-        elif len(selected_ids) == 1:
-            self.canvas_widget.set_selected_fragment(selected_ids[0])
-        else:
-            self.canvas_widget.set_selected_fragment(None)
-        
-        # Update control panel
         if self.fragment_manager.has_group_selection():
+            # Group selection
+            selected_ids = self.fragment_manager.get_selected_fragment_ids()
+            print(f"MainWindow: Group selection - {len(selected_ids)} fragments")
+            
+            self.canvas_widget.set_selected_fragment_ids(selected_ids)
             self.control_panel.set_group_selection(len(selected_ids))
+            
         elif self.fragment_manager.has_single_selection():
+            # Single selection
             fragment = self.fragment_manager.get_selected_fragment()
+            print(f"MainWindow: Single selection - {fragment.name if fragment else 'None'}")
+            
+            self.canvas_widget.set_selected_fragment(fragment.id if fragment else None)
             self.control_panel.set_selected_fragment(fragment)
+            
         else:
+            # No selection
+            print("MainWindow: No selection")
+            self.canvas_widget.set_selected_fragment(None)
             self.control_panel.set_selected_fragment(None)
     
     def on_group_selected(self, fragment_ids: List[str]):
         """Handle group selection from canvas"""
+        print(f"MainWindow: Group selected from canvas - {len(fragment_ids)} fragments")
+        
         if len(fragment_ids) > 1:
-            self.fragment_manager.select_group(fragment_ids)
+            self.fragment_manager.set_group_selection(fragment_ids)
         elif len(fragment_ids) == 1:
-            self.fragment_manager.select_single_fragment(fragment_ids[0])
+            self.fragment_manager.set_selected_fragment(fragment_ids[0])
         else:
             self.fragment_manager.clear_selection()
-        
-        # Auto-disable rectangle selection mode after making a selection
-        if self.rectangle_select_action.isChecked():
-            self.rectangle_select_action.setChecked(False)
     
     def apply_group_rotation(self, angle_degrees: int):
         """Apply rotation to selected group"""
-        print(f"Main window: applying {angle_degrees}° rotation to group")
-        self.fragment_manager.apply_group_rotation(angle_degrees)
+        print(f"MainWindow: Applying {angle_degrees}° rotation to group")
+        self.fragment_manager.rotate_group(angle_degrees)
     
     def apply_group_translation(self, dx: float, dy: float):
         """Apply translation to selected group"""
-        print(f"Main window: applying translation ({dx}, {dy}) to group")
-        self.fragment_manager.apply_group_translation(dx, dy)
+        print(f"MainWindow: Applying translation ({dx}, {dy}) to group")
+        self.fragment_manager.translate_group(dx, dy)
         
     def setup_menu_bar(self):
         """Setup the menu bar"""
@@ -435,7 +437,7 @@ class MainWindow(QMainWindow):
             
     def select_fragment(self, fragment_id: str):
         """Select a fragment"""
-        self.fragment_manager.select_single_fragment(fragment_id)
+        self.fragment_manager.set_selected_fragment(fragment_id)
         
     def toggle_fragment_visibility(self, fragment_id: str, visible: bool):
         """Toggle fragment visibility"""

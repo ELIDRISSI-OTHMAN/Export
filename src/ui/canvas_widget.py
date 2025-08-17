@@ -592,7 +592,7 @@ class CanvasWidget(QWidget):
                         )
                 else:
                     # Clear selection and start panning
-                    self.group_selected.emit([])
+                    self.fragment_selected.emit("")  # Clear selection
                     self.is_panning = True
                 
         elif event.button() == Qt.MouseButton.MiddleButton:
