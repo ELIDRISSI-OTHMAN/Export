@@ -112,7 +112,7 @@ class PyramidalExporter:
                 QApplication.processEvents()
             
             # Calculate composite bounds at level 0 (highest resolution)
-            level_0_bounds = self._calculate_composite_bounds_at_level(fragments, 0)
+            level_0_bounds = self._calculate_composite_bounds_at_level_corrected(fragments, 0)
             if not level_0_bounds:
                 raise ValueError("Could not calculate composite bounds")
             
