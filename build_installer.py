@@ -66,6 +66,15 @@ def build_executable():
             shutil.rmtree(folder)
             print(f"Cleaned {folder}/")
     
+    # Add Python DLL paths
+    python_dir = os.path.dirname(sys.executable)
+    python_dlls_dir = os.path.join(python_dir, 'DLLs')
+    python_lib_dir = os.path.join(python_dir, 'Library', 'bin')
+    
+    print(f"Python directory: {python_dir}")
+    print(f"Python DLLs directory: {python_dlls_dir}")
+    print(f"Python Library directory: {python_lib_dir}")
+    
     # Find OpenSlide DLLs
     openslide_dlls = find_openslide_dlls()
     
@@ -76,6 +85,11 @@ def build_executable():
         "--windowed",
         "--name", "TissueFragmentStitching",
         "--clean",
+        
+        # Add Python paths
+        "--paths", python_dir,
+        "--paths", python_dlls_dir,
+        "--paths", python_lib_dir,
         
         # Add data files
         "--add-data", "src;src",
