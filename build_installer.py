@@ -142,22 +142,68 @@ a.binaries += openslide_binaries
 from PyInstaller.utils.hooks import collect_all
 
 # Collect PyQt6
-pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all('PyQt6')
-a.datas += pyqt6_datas
-a.binaries += pyqt6_binaries
-a.hiddenimports += pyqt6_hiddenimports
+try:
+    pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all('PyQt6')
+    a.datas += pyqt6_datas
+    a.binaries += pyqt6_binaries
+    a.hiddenimports += pyqt6_hiddenimports
+except ValueError:
+    # Handle newer PyInstaller versions that return different tuple sizes
+    try:
+        pyqt6_result = collect_all('PyQt6')
+        if len(pyqt6_result) == 3:
+            pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = pyqt6_result
+            a.datas += pyqt6_datas
+            a.binaries += pyqt6_binaries
+            a.hiddenimports += pyqt6_hiddenimports
+        elif len(pyqt6_result) == 2:
+            pyqt6_datas, pyqt6_binaries = pyqt6_result
+            a.datas += pyqt6_datas
+            a.binaries += pyqt6_binaries
+    except Exception as e:
+        print(f"Warning: Could not collect PyQt6 automatically: {e}")
 
 # Collect cv2
-cv2_datas, cv2_binaries, cv2_hiddenimports = collect_all('cv2')
-a.datas += cv2_datas
-a.binaries += cv2_binaries
-a.hiddenimports += cv2_hiddenimports
+try:
+    cv2_datas, cv2_binaries, cv2_hiddenimports = collect_all('cv2')
+    a.datas += cv2_datas
+    a.binaries += cv2_binaries
+    a.hiddenimports += cv2_hiddenimports
+except ValueError:
+    try:
+        cv2_result = collect_all('cv2')
+        if len(cv2_result) == 3:
+            cv2_datas, cv2_binaries, cv2_hiddenimports = cv2_result
+            a.datas += cv2_datas
+            a.binaries += cv2_binaries
+            a.hiddenimports += cv2_hiddenimports
+        elif len(cv2_result) == 2:
+            cv2_datas, cv2_binaries = cv2_result
+            a.datas += cv2_datas
+            a.binaries += cv2_binaries
+    except Exception as e:
+        print(f"Warning: Could not collect cv2 automatically: {e}")
 
 # Collect numpy
-numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
-a.datas += numpy_datas
-a.binaries += numpy_binaries
-a.hiddenimports += numpy_hiddenimports
+try:
+    numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
+    a.datas += numpy_datas
+    a.binaries += numpy_binaries
+    a.hiddenimports += numpy_hiddenimports
+except ValueError:
+    try:
+        numpy_result = collect_all('numpy')
+        if len(numpy_result) == 3:
+            numpy_datas, numpy_binaries, numpy_hiddenimports = numpy_result
+            a.datas += numpy_datas
+            a.binaries += numpy_binaries
+            a.hiddenimports += numpy_hiddenimports
+        elif len(numpy_result) == 2:
+            numpy_datas, numpy_binaries = numpy_result
+            a.datas += numpy_datas
+            a.binaries += numpy_binaries
+    except Exception as e:
+        print(f"Warning: Could not collect numpy automatically: {e}")
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
