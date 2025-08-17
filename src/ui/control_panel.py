@@ -377,10 +377,10 @@ class ControlPanel(QWidget):
     def set_selected_fragments(self, fragment_ids: List[str], fragments: List[Fragment]):
         """Set multiple selected fragments (group selection)"""
         self.selected_fragment_ids = fragment_ids
-        self.is_group_selected = len(fragment_ids) > 1
+        self.is_group_selected = True
         self.current_fragment = fragments[0] if fragments else None  # Use first fragment for display
         
-        if self.is_group_selected:
+        if len(fragment_ids) > 1:
             # Switch to group tab
             self.tab_widget.setCurrentWidget(self.group_tab)
             self.group_tab.setEnabled(True)
@@ -388,46 +388,59 @@ class ControlPanel(QWidget):
             
             # Update group info
             self.group_name_label.setText(f"Group Selection ({len(fragment_ids)} fragments)")
+            print(f"DEBUG: Group selected with {len(fragment_ids)} fragments")
         else:
             # Single fragment or no selection - switch to fragment tab
             self.tab_widget.setCurrentWidget(self.fragment_tab)
             self.fragment_tab.setEnabled(True)
             self.group_tab.setEnabled(False)
+            self.is_group_selected = False
         
         self.update_controls()
         
     def update_controls(self):
         """Update control states based on current fragment"""
-        has_fragment = self.current_fragment is not None or self.is_group_selected
+        has_fragment = self.current_fragment is not None
+        has_group = len(self.selected_fragment_ids) > 1
         
-        if self.is_group_selected:
+        if has_group:
             # Enable all group controls when group is selected
-            self.group_rotation_group.setEnabled(len(self.selected_fragment_ids) > 1)
-            self.group_movement_group.setEnabled(len(self.selected_fragment_ids) > 1)
-            self.group_reset_btn.setEnabled(len(self.selected_fragment_ids) > 1)
+            self.group_rotation_group.setEnabled(True)
+            self.group_movement_group.setEnabled(True)
+            self.group_reset_btn.setEnabled(True)
             
-            # Enable individual group buttons only when we have multiple fragments
-            has_multiple = len(self.selected_fragment_ids) > 1
-            self.group_rotate_ccw_btn.setEnabled(has_multiple)
-            self.group_rotate_cw_btn.setEnabled(has_multiple)
-            self.group_up_btn.setEnabled(has_multiple)
-            self.group_down_btn.setEnabled(has_multiple)
-            self.group_left_btn.setEnabled(has_multiple)
-            self.group_right_btn.setEnabled(has_multiple)
-            self.group_center_btn.setEnabled(has_multiple)
+            # Enable all group buttons
+            self.group_rotate_ccw_btn.setEnabled(True)
+            self.group_rotate_cw_btn.setEnabled(True)
+            self.group_up_btn.setEnabled(True)
+            self.group_down_btn.setEnabled(True)
+            self.group_left_btn.setEnabled(True)
+            self.group_right_btn.setEnabled(True)
+            self.group_center_btn.setEnabled(True)
             
             # Update group info
             self.group_name_label.setText(f"Group Selection ({len(self.selected_fragment_ids)} fragments)")
             
-            # Make sure the group tab is enabled and visible
+            # Switch to group tab
             self.group_tab.setEnabled(True)
             self.fragment_tab.setEnabled(False)
+            self.tab_widget.setCurrentWidget(self.group_tab)
             
-        elif has_fragment and not self.is_group_selected:
+        elif has_fragment:
             # Single fragment selection - enable everything
             self.transform_group.setEnabled(True)
             self.position_group.setEnabled(True)
             self.display_group.setEnabled(True)
+            
+            # Disable group controls
+            self.group_rotation_group.setEnabled(False)
+            self.group_movement_group.setEnabled(False)
+            self.group_reset_btn.setEnabled(False)
+            
+            # Switch to fragment tab
+            self.fragment_tab.setEnabled(True)
+            self.group_tab.setEnabled(False)
+            self.tab_widget.setCurrentWidget(self.fragment_tab)
             
             fragment = self.current_fragment
             
