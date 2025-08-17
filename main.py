@@ -6,6 +6,30 @@ Main application entry point
 
 import sys
 import os
+
+# Fix OpenSlide DLL loading issues at runtime
+def fix_openslide_path():
+    """Fix OpenSlide DLL path issues"""
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable
+        app_dir = os.path.dirname(sys.executable)
+        
+        # Add potential OpenSlide DLL locations to PATH
+        dll_paths = [
+            os.path.join(app_dir, 'openslide_bin'),
+            os.path.join(app_dir, '_internal', 'openslide_bin'),
+            os.path.join(app_dir, '_internal'),
+            app_dir
+        ]
+        
+        for dll_path in dll_paths:
+            if os.path.exists(dll_path):
+                if dll_path not in os.environ.get('PATH', ''):
+                    os.environ['PATH'] = dll_path + os.pathsep + os.environ.get('PATH', '')
+
+# Apply the fix before importing anything else
+fix_openslide_path()
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
