@@ -1,348 +1,369 @@
+#!/usr/bin/env python3
 """
-Image loading utilities for various formats including pyramidal images
+Build installer for Tissue Fragment Stitching application
+This version includes debug output to help identify runtime issues
 """
 
 import os
-import numpy as np
-from typing import Optional, Tuple
-import cv2
-from PIL import Image
-import tifffile
+import sys
+import subprocess
+import shutil
+from pathlib import Path
 
-try:
-    import openslide
-    OPENSLIDE_AVAILABLE = True
-except ImportError:
-    OPENSLIDE_AVAILABLE = False
+def run_command(cmd, description=""):
+    """Run a command and return success status"""
+    print(f"\n{'='*60}")
+    print(f"RUNNING: {description}")
+    print(f"COMMAND: {' '.join(cmd)}")
+    print(f"{'='*60}")
+    
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        print("✅ SUCCESS")
+        if result.stdout:
+            print("STDOUT:", result.stdout)
+        return True
+    except subprocess.CalledProcessError as e:
+        print("❌ FAILED")
+        print("STDERR:", e.stderr)
+        print("STDOUT:", e.stdout)
+        return False
+    except Exception as e:
+        print(f"❌ EXCEPTION: {e}")
+        return False
 
-class ImageLoader:
-    """Handles loading of various image formats including pyramidal images"""
+def install_build_tools():
+    """Install required build tools"""
+    print("\n🔧 Installing build tools...")
     
-    def __init__(self):
-        self.supported_formats = {'.tiff', '.tif', '.png', '.jpg', '.jpeg'}
-        if OPENSLIDE_AVAILABLE:
-            self.supported_formats.update({'.svs', '.ndpi', '.vms', '.vmu'})
+    tools = [
+        "pyinstaller",
+        "auto-py-to-exe"
+    ]
     
-    def load_image(self, file_path: str, level: int = 0) -> Optional[np.ndarray]:
-        """
-        Load image from file path
-        
-        Args:
-            file_path: Path to image file
-            level: Pyramid level for multi-resolution images (0 = highest resolution)
-            
-        Returns:
-            Image data as numpy array or None if loading failed
-        """
-        print(f"ImageLoader: Attempting to load {file_path}")
-        
-        if not os.path.exists(file_path):
-            print(f"ImageLoader: File not found: {file_path}")
-            raise FileNotFoundError(f"Image file not found: {file_path}")
-            
-        file_ext = os.path.splitext(file_path)[1].lower()
-        print(f"ImageLoader: File extension: {file_ext}")
-        
-        if file_ext not in self.supported_formats:
-            print(f"ImageLoader: Unsupported format: {file_ext}")
-            raise ValueError(f"Unsupported file format: {file_ext}")
-        
-        try:
-            if file_ext == '.svs' and OPENSLIDE_AVAILABLE:
-                print("ImageLoader: Using OpenSlide")
-                return self._load_openslide_image(file_path, level)
-            elif file_ext in {'.tiff', '.tif'}:
-                print("ImageLoader: Using TIFF loader")
-                return self._load_tiff_image(file_path)
-            else:
-                print("ImageLoader: Using standard loader")
-                return self._load_standard_image(file_path)
-                
-        except Exception as e:
-            raise RuntimeError(f"Failed to load image {file_path}: {str(e)}")
+    for tool in tools:
+        if not run_command([sys.executable, "-m", "pip", "install", tool], f"Installing {tool}"):
+            print(f"⚠️  Failed to install {tool}, continuing anyway...")
     
-    def _load_openslide_image(self, file_path: str, level: int = 6) -> np.ndarray:
-        """Load image using OpenSlide for pyramidal formats"""
-        slide = openslide.OpenSlide(file_path)
-        
-        # Get image at specified level
-        if level >= slide.level_count:
-            level = slide.level_count - 1
-            
-        # Read the entire level
-        image = slide.read_region((0, 0), level, slide.level_dimensions[level])
-        
-        # Keep RGBA format to preserve alpha channel
-        if image.mode != 'RGBA':
-            image = image.convert('RGBA')
-        
-        # Convert to numpy array
-        image_array = np.array(image)
-        
-        slide.close()
-        return image_array
-    
+    return True
 
+def create_debug_spec():
+    """Create PyInstaller spec file with debug options"""
+    print("\n📝 Creating debug spec file...")
+    
+    spec_content = '''# -*- mode: python ; coding: utf-8 -*-
 
-    def _load_tiff_image(self, file_path: str, level: int = 0) -> np.ndarray:
-        """Load TIFF image using tifffile, handling both standard and pyramidal TIFFs"""
-        try:
-            # Use tifffile directly for pyramidal TIFFs
-            with tifffile.TiffFile(file_path) as tif:
-                if hasattr(tif, 'series') and tif.series:
-                    series = tif.series[0]
-                    if hasattr(series, 'levels') and len(series.levels) > 1:
-                        # Pyramidal TIFF
-                        max_level = len(series.levels) - 1
-                        if level > max_level:
-                            level = max_level
-                        
-                        print(f"Loading pyramidal TIFF {file_path} at level {level} (max level: {max_level})")
-                        
-                        # Read the specific level
-                        level_data = series.levels[level].asarray()
-                        
-                        # Convert to RGBA if needed
-                        if len(level_data.shape) == 2:
-                            # Grayscale to RGBA
-                            rgb = np.stack([level_data] * 3, axis=2)
-                            alpha = np.full(level_data.shape, 255, dtype=np.uint8)
-                            image_array = np.dstack([rgb, alpha])
-                        elif len(level_data.shape) == 3:
-                            if level_data.shape[2] == 3:
-                                # RGB to RGBA
-                                alpha = np.full(level_data.shape[:2], 255, dtype=np.uint8)
-                                image_array = np.dstack([level_data, alpha])
-                            elif level_data.shape[2] == 4:
-                                # Already RGBA
-                                image_array = level_data
-                            else:
-                                raise ValueError(f"Unsupported number of channels: {level_data.shape[2]}")
-                        else:
-                            raise ValueError(f"Unsupported image dimensions: {level_data.shape}")
-                        
-                        return image_array
-                    else:
-                        # Single level TIFF
-                        print(f"Loading single-level TIFF {file_path}")
-                        image_data = tif.asarray()
-                        
-                        # Convert to RGBA if needed
-                        if len(image_data.shape) == 2:
-                            rgb = np.stack([image_data] * 3, axis=2)
-                            alpha = np.full(image_data.shape, 255, dtype=np.uint8)
-                            image_array = np.dstack([rgb, alpha])
-                        elif len(image_data.shape) == 3:
-                            if image_data.shape[2] == 3:
-                                alpha = np.full(image_data.shape[:2], 255, dtype=np.uint8)
-                                image_array = np.dstack([image_data, alpha])
-                            elif image_data.shape[2] == 4:
-                                image_array = image_data
-                            else:
-                                raise ValueError(f"Unsupported number of channels: {image_data.shape[2]}")
-                        else:
-                            raise ValueError(f"Unsupported image dimensions: {image_data.shape}")
-                        
-                        return image_array
-                else:
-                    raise ValueError("No series found in TIFF file")
-                    
-        except Exception as e:
-            print(f"tifffile failed for {file_path}: {e}")
-            
-            # Final fallback to PIL
-            try:
-                image = Image.open(file_path)
-                # Preserve alpha channel if present
-                if image.mode in ['RGBA', 'LA']:
-                    pass  # Keep as is
-                elif image.mode in ['RGB', 'L']:
-                    # Add alpha channel
-                    image = image.convert('RGBA')
-                image_array = np.array(image)
-                print(f"Loaded {file_path} using PIL, shape: {image_array.shape}")
-            except Exception as pil_error:
-                print(f"PIL also failed for {file_path}: {pil_error}")
-                raise
+import sys
+import os
+from pathlib import Path
 
+# Add current directory to path
+current_dir = os.path.dirname(os.path.abspath(SPEC))
+sys.path.insert(0, current_dir)
+
+block_cipher = None
+
+# Define all the data files and hidden imports
+datas = [
+    ('src', 'src'),
+    ('README.md', '.'),
+    ('requirements.txt', '.'),
+]
+
+hiddenimports = [
+    # Core PyQt6 modules
+    'PyQt6.QtCore',
+    'PyQt6.QtGui', 
+    'PyQt6.QtWidgets',
+    'PyQt6.QtOpenGL',
+    'PyQt6.QtOpenGLWidgets',
     
-    def _load_standard_image(self, file_path: str) -> np.ndarray:
-        """Load standard image formats using OpenCV"""
-        # Load with alpha channel support
-        image_array = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
-        
-        if image_array is None:
-            raise ValueError(f"Could not load image: {file_path}")
-            
-        # Handle different channel configurations
-        if len(image_array.shape) == 2:
-            # Grayscale to RGBA
-            rgb = np.stack([image_array] * 3, axis=2)
-            alpha = np.full(image_array.shape, 255, dtype=np.uint8)
-            image_array = np.dstack([rgb, alpha])
-        elif len(image_array.shape) == 3:
-            if image_array.shape[2] == 3:
-                # BGR to RGBA
-                image_array = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
-                alpha = np.full(image_array.shape[:2], 255, dtype=np.uint8)
-                image_array = np.dstack([image_array, alpha])
-            elif image_array.shape[2] == 4:
-                # BGRA to RGBA
-                image_array = cv2.cvtColor(image_array, cv2.COLOR_BGRA2RGBA)
-        
-        return image_array
+    # Image processing
+    'cv2',
+    'numpy',
+    'PIL',
+    'PIL.Image',
+    'tifffile',
+    'skimage',
+    'skimage.feature',
+    'skimage.transform',
+    'skimage.measure',
     
-    def get_image_info(self, file_path: str) -> dict:
-        """Get information about an image file"""
-        info = {
-            'file_path': file_path,
-            'file_size': os.path.getsize(file_path),
-            'format': os.path.splitext(file_path)[1].lower(),
-            'dimensions': None,
-            'levels': 1,
-            'pixel_size': None
-        }
-        
-        try:
-            file_ext = info['format']
-            
-            if file_ext == '.svs' and OPENSLIDE_AVAILABLE:
-                slide = openslide.OpenSlide(file_path)
-                info['dimensions'] = slide.level_dimensions
-                info['levels'] = slide.level_count
-                
-                # Try to get pixel size from metadata
-                try:
-                    mpp_x = float(slide.properties.get(openslide.PROPERTY_NAME_MPP_X, 0))
-                    mpp_y = float(slide.properties.get(openslide.PROPERTY_NAME_MPP_Y, 0))
-                    if mpp_x > 0 and mpp_y > 0:
-                        info['pixel_size'] = (mpp_x, mpp_y)
-                except:
-                    pass
-                    
-                slide.close()
-                
-            else:
-                image = Image.open(file_path)
-                info['dimensions'] = [(image.width, image.height)]
-                image.close()
-                
-        except Exception as e:
-            print(f"Warning: Could not get info for {file_path}: {e}")
-            
-        return info
+    # Scientific computing
+    'scipy',
+    'scipy.optimize',
+    'scipy.ndimage',
     
-    def is_pyramidal(self, file_path: str) -> bool:
-        """Check if image is pyramidal (multi-resolution)"""
-        file_ext = os.path.splitext(file_path)[1].lower()
-        
-        if file_ext == '.svs' and OPENSLIDE_AVAILABLE:
-            return True
-        elif file_ext in {'.tiff', '.tif'}:
-            try:
-                with tifffile.TiffFile(file_path) as tif:
-                    return tif.is_pyramidal
-            except:
-                return False
-        
+    # OpenSlide (if available)
+    'openslide',
+    
+    # Application modules
+    'src',
+    'src.main_window',
+    'src.core',
+    'src.core.fragment',
+    'src.core.fragment_manager',
+    'src.core.image_loader',
+    'src.core.labeled_point',
+    'src.core.point_manager',
+    'src.core.group_manager',
+    'src.ui',
+    'src.ui.canvas_widget',
+    'src.ui.control_panel',
+    'src.ui.fragment_list',
+    'src.ui.toolbar',
+    'src.ui.theme',
+    'src.ui.export_dialog',
+    'src.ui.point_input_dialog',
+    'src.utils',
+    'src.utils.export_manager',
+    'src.utils.pyramidal_exporter',
+    'src.algorithms',
+    'src.algorithms.rigid_stitching',
+]
+
+# Collect binaries (DLLs)
+binaries = []
+
+a = Analysis(
+    ['main.py'],
+    pathex=[current_dir],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=['runtime_hook.py'],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='TissueFragmentStitching',
+    debug=True,  # Enable debug output
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,  # Show console for debug output
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='TissueFragmentStitching',
+)
+'''
+    
+    with open('debug_app.spec', 'w') as f:
+        f.write(spec_content)
+    
+    print("✅ Debug spec file created")
+    return True
+
+def create_runtime_hook():
+    """Create runtime hook for debugging"""
+    print("\n🔗 Creating runtime hook...")
+    
+    hook_content = '''"""
+Runtime hook for debugging import issues
+"""
+import sys
+import os
+import traceback
+
+print("🚀 RUNTIME HOOK STARTED")
+print(f"Python version: {sys.version}")
+print(f"Python executable: {sys.executable}")
+print(f"Current working directory: {os.getcwd()}")
+
+# Print sys.path
+print("\\n📁 Python path:")
+for i, path in enumerate(sys.path):
+    print(f"  {i}: {path}")
+
+# Check if we're running as frozen
+if hasattr(sys, '_MEIPASS'):
+    print(f"\\n❄️  Running as frozen executable")
+    print(f"Bundle directory: {sys._MEIPASS}")
+    
+    # Add bundle directory to path
+    if sys._MEIPASS not in sys.path:
+        sys.path.insert(0, sys._MEIPASS)
+        print(f"Added bundle directory to Python path")
+else:
+    print("\\n🐍 Running as Python script")
+
+# Try to import critical modules
+critical_modules = [
+    'PyQt6',
+    'PyQt6.QtCore',
+    'PyQt6.QtWidgets',
+    'numpy',
+    'cv2',
+    'PIL',
+    'tifffile'
+]
+
+print("\\n🔍 Testing critical imports:")
+for module in critical_modules:
+    try:
+        __import__(module)
+        print(f"  ✅ {module}")
+    except Exception as e:
+        print(f"  ❌ {module}: {e}")
+
+# Try to import application modules
+app_modules = [
+    'src',
+    'src.main_window',
+    'src.core.fragment',
+    'src.ui.canvas_widget'
+]
+
+print("\\n🏠 Testing application imports:")
+for module in app_modules:
+    try:
+        __import__(module)
+        print(f"  ✅ {module}")
+    except Exception as e:
+        print(f"  ❌ {module}: {e}")
+        traceback.print_exc()
+
+print("\\n🏁 RUNTIME HOOK COMPLETED")
+'''
+    
+    with open('runtime_hook.py', 'w') as f:
+        f.write(hook_content)
+    
+    print("✅ Runtime hook created")
+    return True
+
+def build_executable():
+    """Build the executable using PyInstaller"""
+    print("\n🏗️  Building executable...")
+    
+    # Clean previous builds
+    for dir_name in ['build', 'dist']:
+        if os.path.exists(dir_name):
+            print(f"🧹 Cleaning {dir_name}/")
+            shutil.rmtree(dir_name)
+    
+    # Build using spec file
+    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "debug_app.spec"]
+    
+    if not run_command(cmd, "Building executable with PyInstaller"):
         return False
     
-    def get_pyramid_info(self, file_path: str) -> dict:
-        """Get detailed pyramid information for a file"""
-        info = {
-            'levels': [],
-            'level_dimensions': [],
-            'level_downsamples': [],
-            'has_pyramid': False
-        }
-        
-        try:
-            # Try tifffile first for TIFF files
-            if file_path.lower().endswith(('.tif', '.tiff')):
-                try:
-                    import tifffile
-                    with tifffile.TiffFile(file_path) as tif:
-                        if hasattr(tif, 'series') and tif.series:
-                            series = tif.series[0]
-                            if hasattr(series, 'levels') and len(series.levels) > 1:
-                                info['levels'] = list(range(len(series.levels)))
-                                info['level_dimensions'] = [(level.shape[1], level.shape[0]) for level in series.levels]
-                                info['level_downsamples'] = [1.0 * (2 ** i) for i in range(len(series.levels))]
-                                info['has_pyramid'] = True
-                            else:
-                                # Single level TIFF
-                                if tif.pages:
-                                    page = tif.pages[0]
-                                    info['levels'] = [0]
-                                    info['level_dimensions'] = [(page.shape[1], page.shape[0])]
-                                    info['level_downsamples'] = [1.0]
-                                    info['has_pyramid'] = False
-                        else:
-                            # Fallback for problematic TIFF files
-                            if tif.pages:
-                                page = tif.pages[0]
-                                info['levels'] = [0]
-                                info['level_dimensions'] = [(page.shape[1], page.shape[0])]
-                                info['level_downsamples'] = [1.0]
-                                info['has_pyramid'] = False
-                except Exception as tiff_error:
-                    self.logger.warning(f"tifffile failed for {file_path}: {tiff_error}")
-                    # Try with PIL as final fallback
-                    try:
-                        from PIL import Image
-                        with Image.open(file_path) as img:
-                            info['levels'] = [0]
-                            info['level_dimensions'] = [(img.width, img.height)]
-                            info['level_downsamples'] = [1.0]
-                            info['has_pyramid'] = False
-                    except Exception as pil_error:
-                        self.logger.warning(f"PIL also failed for {file_path}: {pil_error}")
-                        raise
-            
-            elif OPENSLIDE_AVAILABLE and self._is_openslide_compatible(file_path):
-                # Use OpenSlide for supported formats
-                slide = openslide.OpenSlide(file_path)
-                info['levels'] = list(range(slide.level_count))
-                info['level_dimensions'] = slide.level_dimensions
-                info['level_downsamples'] = slide.level_downsamples
-                info['has_pyramid'] = slide.level_count > 1
-            
-            else:
-                # For other formats, use PIL
-                from PIL import Image
-                with Image.open(file_path) as img:
-                    info['levels'] = [0]
-                    info['level_dimensions'] = [(img.width, img.height)]
-                    info['level_downsamples'] = [1.0]
-                    info['has_pyramid'] = False
-                        
-        except Exception as e:
-            print(f"Could not get pyramid info for {file_path}: {e}")
-            # Return minimal fallback info
-            try:
-                from PIL import Image
-                with Image.open(file_path) as img:
-                    info['levels'] = [0]
-                    info['level_dimensions'] = [(img.width, img.height)]
-                    info['level_downsamples'] = [1.0]
-                    info['has_pyramid'] = False
-            except:
-                # Final fallback with dummy dimensions
-                info['levels'] = [0]
-                info['level_dimensions'] = [(1024, 1024)]  # Dummy size
-                info['level_downsamples'] = [1.0]
-                info['has_pyramid'] = False
-            
-        return info
+    print("✅ Executable built successfully")
+    return True
+
+def create_test_script():
+    """Create a test script to run the executable"""
+    print("\n📋 Creating test script...")
     
-    def _is_openslide_compatible(self, file_path: str) -> bool:
-        """Check if file is compatible with OpenSlide"""
-        if not OPENSLIDE_AVAILABLE:
+    test_content = '''@echo off
+echo ========================================
+echo TESTING TISSUE FRAGMENT STITCHING
+echo ========================================
+
+cd /d "%~dp0"
+echo Current directory: %CD%
+
+echo.
+echo Checking if executable exists...
+if exist "dist\\TissueFragmentStitching\\TissueFragmentStitching.exe" (
+    echo ✅ Executable found
+) else (
+    echo ❌ Executable not found
+    pause
+    exit /b 1
+)
+
+echo.
+echo Running executable...
+echo ========================================
+"dist\\TissueFragmentStitching\\TissueFragmentStitching.exe"
+
+echo.
+echo ========================================
+echo Execution completed
+pause
+'''
+    
+    with open('test_app.bat', 'w') as f:
+        f.write(test_content)
+    
+    print("✅ Test script created: test_app.bat")
+    return True
+
+def main():
+    """Main build process"""
+    print("🚀 TISSUE FRAGMENT STITCHING - DEBUG BUILD")
+    print("=" * 60)
+    
+    try:
+        # Install build tools
+        if not install_build_tools():
+            print("❌ Failed to install build tools")
+            return False
+        
+        # Create debug files
+        if not create_runtime_hook():
+            print("❌ Failed to create runtime hook")
             return False
             
-        try:
-            # Try to detect if OpenSlide can handle this file
-            openslide.OpenSlide.detect_format(file_path)
-            return True
-        except:
+        if not create_debug_spec():
+            print("❌ Failed to create spec file")
             return False
+        
+        # Build executable
+        if not build_executable():
+            print("❌ Failed to build executable")
+            return False
+        
+        # Create test script
+        if not create_test_script():
+            print("❌ Failed to create test script")
+            return False
+        
+        print("\n" + "=" * 60)
+        print("🎉 BUILD COMPLETED SUCCESSFULLY!")
+        print("=" * 60)
+        print("\n📋 NEXT STEPS:")
+        print("1. Run 'test_app.bat' to test the executable")
+        print("2. Check the console output for any errors")
+        print("3. The executable is in: dist/TissueFragmentStitching/")
+        print("\n💡 The executable will show a console window with debug info")
+        print("   This will help us identify what's not working!")
+        
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ BUILD FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    success = main()
+    if not success:
+        sys.exit(1)
