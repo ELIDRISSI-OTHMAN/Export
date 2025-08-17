@@ -1,23 +1,15 @@
 """
-Pyramidal TIFF exporter with proper transformation support
+Pyramidal TIFF exporter optimized for preprocessed RGBA TIFF files
 """
 
 import os
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Callable
 import logging
-import tempfile
-import shutil
 import math
 
 # Import QApplication for processEvents
 from PyQt6.QtWidgets import QApplication
-
-try:
-    import openslide
-    OPENSLIDE_AVAILABLE = True
-except ImportError:
-    OPENSLIDE_AVAILABLE = False
 
 try:
     import tifffile
@@ -26,38 +18,33 @@ except ImportError:
     TIFFFILE_AVAILABLE = False
 
 try:
-    import pyvips
-    PYVIPS_AVAILABLE = True
-    # Enable pyvips cache for better performance
-    pyvips.cache_set_max(100)
-    pyvips.cache_set_max_mem(100 * 1024 * 1024)  # 100MB
+    import cv2
+    CV2_AVAILABLE = True
 except ImportError:
-    PYVIPS_AVAILABLE = False
+    CV2_AVAILABLE = False
 
 from ..core.fragment import Fragment
 
 class PyramidalExporter:
-    """Handles export of stitched pyramidal TIFF files with proper transformation support"""
+    """Handles export of stitched pyramidal TIFF files optimized for RGBA inputs"""
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
-        # Check available libraries and recommend best approach
-        if PYVIPS_AVAILABLE:
-            self.logger.info("Using pyvips for pyramidal TIFF export (recommended)")
-            self.export_method = "pyvips"
-        elif TIFFFILE_AVAILABLE:
-            self.logger.info("Using tifffile for pyramidal TIFF export (fallback)")
-            self.export_method = "tifffile"
-        else:
-            self.logger.error("No suitable library available for pyramidal TIFF export")
-            self.export_method = None
+        if not TIFFFILE_AVAILABLE:
+            self.logger.error("tifffile is required for pyramidal TIFF export")
+            raise ImportError("tifffile is required for pyramidal TIFF export")
+        
+        if not CV2_AVAILABLE:
+            self.logger.warning("opencv-python not available - some transformations may be limited")
+            
+        self.logger.info("Using tifffile for pyramidal TIFF export")
             
     def export_pyramidal_tiff(self, fragments: List[Fragment], output_path: str,
                              selected_levels: List[int], compression: str = "LZW",
                              tile_size: int = 256, progress_callback: Optional[Callable] = None) -> bool:
         """
-        Export fragments as a stitched pyramidal TIFF with proper transformation support
+        Export fragments as a stitched pyramidal TIFF
         
         Args:
             fragments: List of visible Fragment objects
@@ -82,367 +69,31 @@ class PyramidalExporter:
             if not selected_levels:
                 raise ValueError("No pyramid levels selected for export")
                 
-            # Choose export method based on available libraries
-            if self.export_method == "pyvips" and PYVIPS_AVAILABLE:
-                return self._export_with_pyvips(
-                    visible_fragments, output_path, selected_levels,
-                    compression, tile_size, progress_callback
-                )
-            elif self.export_method == "tifffile" and TIFFFILE_AVAILABLE:
-                return self._export_with_tifffile_corrected(
-                    visible_fragments, output_path, selected_levels,
-                    compression, progress_callback
-                )
-            else:
-                raise RuntimeError("No suitable export method available")
-                
-        except Exception as e:
-            self.logger.error(f"Pyramidal TIFF export failed: {str(e)}")
             if progress_callback:
-                progress_callback(0, f"Export failed: {str(e)}")
-            return False
-    
-    def _export_with_pyvips(self, fragments: List[Fragment], output_path: str,
-                           selected_levels: List[int], compression: str, tile_size: int,
-                           progress_callback: Optional[Callable]) -> bool:
-        """Export using pyvips (recommended method for true pyramidal TIFFs)"""
-        try:
-            if progress_callback:
-                progress_callback(5, "Initializing pyvips export...")
+                progress_callback(5, "Analyzing fragment pyramid levels...")
                 QApplication.processEvents()
             
-            # Calculate composite bounds at level 0 (highest resolution)
-            level_0_bounds = self._calculate_composite_bounds_at_level_corrected(fragments, 0)
-            if not level_0_bounds:
-                raise ValueError("Could not calculate composite bounds")
+            # Analyze available levels in fragments
+            fragment_pyramid_info = self._analyze_fragment_pyramids(visible_fragments)
             
-            min_x, min_y, max_x, max_y = level_0_bounds
-            base_width = int(max_x - min_x)
-            base_height = int(max_y - min_y)
-            
-            self.logger.info(f"Base composite size: {base_width} x {base_height}")
-            
-            # Create base level composite using pyvips
-            if progress_callback:
-                progress_callback(10, "Creating base level composite...")
-                QApplication.processEvents()
-            
-            base_composite = self._create_pyvips_composite(fragments, 0, level_0_bounds)
-            if base_composite is None:
-                raise ValueError("Failed to create base composite")
-            
-            # Configure compression for pyvips
-            save_options = self._get_pyvips_save_options(compression, tile_size)
-            
-            # Create pyramid levels
-            if len(selected_levels) == 1 and selected_levels[0] == 0:
-                # Single level export
-                if progress_callback:
-                    progress_callback(90, "Saving single level TIFF...")
-                    QApplication.processEvents()
-                
-                base_composite.write_to_file(output_path, **save_options)
-            else:
-                # Multi-level pyramid export
-                if progress_callback:
-                    progress_callback(50, "Creating pyramid levels...")
-                    QApplication.processEvents()
-                
-                # Create pyramid using pyvips
-                pyramid_options = {
-                    'tile': True,
-                    'tile_width': tile_size,
-                    'tile_height': tile_size,
-                    'pyramid': True,
-                    'bigtiff': True,  # Use BigTIFF for large files
-                    **save_options
-                }
-                
-                # Remove conflicting options
-                pyramid_options.pop('tile', None)  # Remove the boolean tile option
-                
-                if progress_callback:
-                    progress_callback(90, "Saving pyramidal TIFF...")
-                    QApplication.processEvents()
-                
-                base_composite.tiffsave(output_path, **pyramid_options)
-            
-            if progress_callback:
-                progress_callback(100, "Export complete")
-                QApplication.processEvents()
-                
-            self.logger.info("Pyramidal TIFF export completed successfully with pyvips")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"pyvips export failed: {str(e)}")
-            if progress_callback:
-                progress_callback(0, f"pyvips export failed: {str(e)}")
-            return False
-    
-    def _create_pyvips_composite(self, fragments: List[Fragment], level: int, 
-                                bounds: Tuple[float, float, float, float]) -> Optional['pyvips.Image']:
-        """Create composite image using pyvips for better memory management"""
-        try:
-            min_x, min_y, max_x, max_y = bounds
-            downsample = 2 ** level
-            
-            # Calculate dimensions at this level
-            width = int((max_x - min_x) / downsample)
-            height = int((max_y - min_y) / downsample)
-            
-            if width <= 0 or height <= 0:
-                return None
-            
-            # Create blank canvas
-            canvas = pyvips.Image.black(width, height, bands=4)  # RGBA
-            
-            # Composite each fragment
-            for fragment in fragments:
-                try:
-                    # Load and transform fragment at the specified level
-                    fragment_image = self._load_fragment_pyvips(fragment, level)
-                    if fragment_image is None:
-                        continue
-                    
-                    # Calculate position in composite
-                    scaled_x = int((fragment.x - min_x) / downsample)
-                    scaled_y = int((fragment.y - min_y) / downsample)
-                    
-                    # Ensure fragment has alpha channel
-                    if fragment_image.bands == 3:
-                        alpha = pyvips.Image.black(fragment_image.width, fragment_image.height) + 255
-                        fragment_image = fragment_image.bandjoin(alpha)
-                    
-                    # Apply opacity
-                    if fragment.opacity < 1.0:
-                        alpha_band = fragment_image.extract_band(3) * fragment.opacity
-                        rgb_bands = fragment_image.extract_band(0, n=3)
-                        fragment_image = rgb_bands.bandjoin(alpha_band)
-                    
-                    # Composite onto canvas
-                    canvas = canvas.composite2(fragment_image, 'over', x=scaled_x, y=scaled_y)
-                    
-                except Exception as e:
-                    self.logger.warning(f"Failed to composite fragment {fragment.name}: {e}")
-                    continue
-            
-            return canvas
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create pyvips composite: {str(e)}")
-            return None
-    
-    def _load_fragment_pyvips(self, fragment: Fragment, level: int) -> Optional['pyvips.Image']:
-        """Load fragment at specific level using pyvips with transformations"""
-        try:
-            # Load image with proper error handling
-            try:
-                # Try to load specific page/level first
-                image = pyvips.Image.new_from_file(fragment.file_path, page=level)
-            except:
-                # Fallback to level 0
-                try:
-                    image = pyvips.Image.new_from_file(fragment.file_path, page=0)
-                except:
-                    # Final fallback - load without page specification
-                    image = pyvips.Image.new_from_file(fragment.file_path)
-                
-                # Downsample if needed
-                if level > 0:
-                    scale = 1.0 / (2 ** level)
-                    image = image.resize(scale)
-            
-            # Fix color space issues
-            image = self._fix_pyvips_colorspace(image)
-            
-            # Apply transformations
-            image = self._apply_pyvips_transforms(image, fragment)
-            
-            return image
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load fragment {fragment.name} with pyvips: {e}")
-            return None
-    
-    def _fix_pyvips_colorspace(self, image: 'pyvips.Image') -> 'pyvips.Image':
-        """Fix color space issues with pyvips images"""
-        try:
-            # Get current interpretation
-            current_interpretation = image.interpretation
-            self.logger.info(f"Image interpretation: {current_interpretation}, bands: {image.bands}")
-            
-            # Handle multiband and other problematic interpretations
-            if current_interpretation in ['multiband', 'matrix', 'fourier']:
-                # For multiband images, manually create RGB interpretation
-                if image.bands == 1:
-                    # Single band - replicate to RGB
-                    band = image.extract_band(0)
-                    image = band.bandjoin([band, band])
-                    image = image.copy(interpretation='srgb')
-                    # Add alpha
-                    alpha = pyvips.Image.black(image.width, image.height) + 255
-                    image = image.bandjoin(alpha)
-                elif image.bands == 3:
-                    # 3 bands - assume RGB
-                    image = image.copy(interpretation='srgb')
-                    # Add alpha
-                    alpha = pyvips.Image.black(image.width, image.height) + 255
-                    image = image.bandjoin(alpha)
-                elif image.bands == 4:
-                    # 4 bands - assume RGBA
-                    rgb = image.extract_band(0, n=3)
-                    alpha = image.extract_band(3)
-                    rgb = rgb.copy(interpretation='srgb')
-                    image = rgb.bandjoin(alpha)
-                else:
-                    # More bands - take first 3 as RGB
-                    rgb = image.extract_band(0, n=3)
-                    rgb = rgb.copy(interpretation='srgb')
-                    alpha = pyvips.Image.black(image.width, image.height) + 255
-                    image = rgb.bandjoin(alpha)
-            else:
-                # Handle standard interpretations
-                if image.bands == 1:
-                    # Grayscale - convert to RGB
-                    try:
-                        image = image.colourspace('srgb')
-                    except:
-                        # Manual conversion if colourspace fails
-                        image = image.bandjoin([image, image])
-                        image = image.copy(interpretation='srgb')
-                    # Add alpha channel
-                    alpha = pyvips.Image.black(image.width, image.height) + 255
-                    image = image.bandjoin(alpha)
-                elif image.bands == 2:
-                    # Grayscale + Alpha - convert to RGBA
-                    gray = image.extract_band(0)
-                    alpha = image.extract_band(1)
-                    try:
-                        rgb = gray.colourspace('srgb')
-                    except:
-                        rgb = gray.bandjoin([gray, gray])
-                        rgb = rgb.copy(interpretation='srgb')
-                    image = rgb.bandjoin(alpha)
-                elif image.bands == 3:
-                    # RGB - ensure proper colorspace and add alpha
-                    try:
-                        if image.interpretation != 'srgb':
-                            image = image.colourspace('srgb')
-                    except:
-                        # If colorspace conversion fails, assume it's already RGB
-                        image = image.copy(interpretation='srgb')
-                    # Add alpha channel
-                    alpha = pyvips.Image.black(image.width, image.height) + 255
-                    image = image.bandjoin(alpha)
-                elif image.bands == 4:
-                    # RGBA - ensure proper colorspace
-                    try:
-                        rgb = image.extract_band(0, n=3)
-                        alpha = image.extract_band(3)
-                        if rgb.interpretation != 'srgb':
-                            rgb = rgb.colourspace('srgb')
-                        image = rgb.bandjoin(alpha)
-                    except:
-                        # If colorspace conversion fails, manually set interpretation
-                        rgb = image.extract_band(0, n=3)
-                        alpha = image.extract_band(3)
-                        rgb = rgb.copy(interpretation='srgb')
-                        image = rgb.bandjoin(alpha)
-                else:
-                    # More than 4 bands - extract first 3 as RGB and create alpha
-                    self.logger.warning(f"Image has {image.bands} bands, extracting first 3 as RGB")
-                    rgb = image.extract_band(0, n=3)
-                    rgb = rgb.copy(interpretation='srgb')
-                    alpha = pyvips.Image.black(image.width, image.height) + 255
-                    image = rgb.bandjoin(alpha)
-            
-            self.logger.info(f"Fixed image interpretation: {image.interpretation}, bands: {image.bands}")
-            
-            return image
-            
-        except Exception as e:
-    
-    def _apply_pyvips_transforms(self, image: 'pyvips.Image', fragment: Fragment) -> 'pyvips.Image':
-        """Apply transformations to pyvips image"""
-        try:
-            result = image
-            
-            # Apply horizontal flip
-            if fragment.flip_horizontal:
-                result = result.fliphor()
-            
-            # Apply vertical flip
-            if fragment.flip_vertical:
-                result = result.flipver()
-            
-            # Apply rotation
-            if abs(fragment.rotation) > 0.01:
-                # pyvips rotate expects angle in degrees
-                result = result.rotate(fragment.rotation, background=[0, 0, 0, 0])
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Failed to fix pyvips colorspace: {e}")
-            return image
-    
-    def _get_pyvips_save_options(self, compression: str, tile_size: int) -> Dict:
-        """Get pyvips save options for different compression types"""
-        options = {
-            'tile_width': tile_size,
-            'tile_height': tile_size,
-        }
-        
-        compression_map = {
-            "LZW": "lzw",
-            "JPEG": "jpeg", 
-            "Deflate": "deflate",
-            "None": "none"
-        }
-        
-        pyvips_compression = compression_map.get(compression, "lzw")
-        options['compression'] = pyvips_compression
-        
-        # JPEG-specific options
-        if pyvips_compression == "jpeg":
-            options['Q'] = 95  # JPEG quality
-            options['rgbjpeg'] = True  # Force RGB JPEG
-        
-        return options
-    
-    def _export_with_tifffile_corrected(self, fragments: List[Fragment], output_path: str,
-                                       selected_levels: List[int], compression: str,
-                                       progress_callback: Optional[Callable]) -> bool:
-        """Corrected tifffile export method with proper transformation handling"""
-        try:
-            if not TIFFFILE_AVAILABLE:
-                raise ImportError("tifffile required for export")
-            
-            # Process each level with correct transformation application
+            # Process each selected level
             level_images = {}
             total_levels = len(selected_levels)
             
             for i, level in enumerate(selected_levels):
                 if progress_callback:
                     progress = int(10 + (i / total_levels) * 70)
-                    progress_callback(progress, f"Processing level {level}")
+                    progress_callback(progress, f"Processing level {level}...")
                     QApplication.processEvents()
                 
                 try:
-                    # Calculate bounds for this specific level
-                    bounds = self._calculate_composite_bounds_at_level_corrected(fragments, level)
-                    if not bounds:
-                        self.logger.warning(f"Could not calculate bounds for level {level}")
-                        continue
-                    
-                    # Render composite with proper transformation scaling
-                    composite = self._render_composite_at_level_corrected(fragments, level, bounds)
+                    # Create composite for this level
+                    composite = self._create_level_composite(visible_fragments, level, fragment_pyramid_info)
                     if composite is not None:
                         level_images[level] = composite
                         self.logger.info(f"Successfully processed level {level}, size: {composite.shape}")
                     else:
-                        self.logger.warning(f"Failed to render composite for level {level}")
+                        self.logger.warning(f"Failed to create composite for level {level}")
                         
                 except Exception as e:
                     self.logger.error(f"Error processing level {level}: {str(e)}")
@@ -451,27 +102,124 @@ class PyramidalExporter:
             if not level_images:
                 raise ValueError("No levels could be processed successfully")
             
-            # Save as proper pyramidal TIFF
+            # Save as pyramidal TIFF
             if progress_callback:
                 progress_callback(85, "Saving pyramidal TIFF...")
                 QApplication.processEvents()
             
-            success = self._save_pyramidal_tiff(level_images, output_path, compression, selected_levels)
+            success = self._save_pyramidal_tiff(level_images, output_path, compression, tile_size)
             
             if progress_callback:
                 progress_callback(100, "Export complete")
                 QApplication.processEvents()
                 
+            self.logger.info("Pyramidal TIFF export completed successfully")
             return success
             
         except Exception as e:
-            self.logger.error(f"Corrected tifffile export failed: {str(e)}")
+            self.logger.error(f"Pyramidal TIFF export failed: {str(e)}")
             if progress_callback:
                 progress_callback(0, f"Export failed: {str(e)}")
             return False
     
-    def _calculate_composite_bounds_at_level_corrected(self, fragments: List[Fragment], level: int) -> Optional[Tuple[float, float, float, float]]:
-        """Calculate composite bounds with proper level scaling"""
+    def _analyze_fragment_pyramids(self, fragments: List[Fragment]) -> Dict[str, Dict]:
+        """Analyze pyramid structure of each fragment"""
+        fragment_info = {}
+        
+        for fragment in fragments:
+            try:
+                with tifffile.TiffFile(fragment.file_path) as tif:
+                    if hasattr(tif, 'series') and tif.series:
+                        series = tif.series[0]
+                        if hasattr(series, 'levels') and len(series.levels) > 1:
+                            # Pyramidal TIFF
+                            levels = []
+                            for level_idx, level in enumerate(series.levels):
+                                levels.append({
+                                    'index': level_idx,
+                                    'shape': level.shape,
+                                    'dimensions': (level.shape[1], level.shape[0])  # (width, height)
+                                })
+                            fragment_info[fragment.id] = {
+                                'is_pyramidal': True,
+                                'levels': levels,
+                                'max_level': len(levels) - 1
+                            }
+                        else:
+                            # Single level TIFF
+                            page = tif.pages[0]
+                            fragment_info[fragment.id] = {
+                                'is_pyramidal': False,
+                                'levels': [{
+                                    'index': 0,
+                                    'shape': page.shape,
+                                    'dimensions': (page.shape[1], page.shape[0])
+                                }],
+                                'max_level': 0
+                            }
+                    else:
+                        self.logger.warning(f"Could not analyze pyramid for {fragment.file_path}")
+                        
+            except Exception as e:
+                self.logger.error(f"Error analyzing {fragment.file_path}: {e}")
+                
+        return fragment_info
+    
+    def _create_level_composite(self, fragments: List[Fragment], level: int, 
+                               pyramid_info: Dict[str, Dict]) -> Optional[np.ndarray]:
+        """Create composite image for a specific pyramid level"""
+        try:
+            # Calculate composite bounds at this level
+            bounds = self._calculate_level_bounds(fragments, level, pyramid_info)
+            if not bounds:
+                return None
+            
+            min_x, min_y, max_x, max_y = bounds
+            width = int(max_x - min_x)
+            height = int(max_y - min_y)
+            
+            if width <= 0 or height <= 0:
+                return None
+            
+            self.logger.info(f"Creating level {level} composite: {width}x{height}")
+            
+            # Create blank RGBA canvas
+            composite = np.zeros((height, width, 4), dtype=np.uint8)
+            downsample = 2 ** level
+            
+            # Composite each fragment
+            for fragment in fragments:
+                try:
+                    # Load fragment at this level
+                    fragment_image = self._load_fragment_at_level(fragment, level, pyramid_info)
+                    if fragment_image is None:
+                        continue
+                    
+                    # Apply transformations
+                    transformed_image = self._apply_transformations(fragment_image, fragment)
+                    if transformed_image is None:
+                        continue
+                    
+                    # Calculate position in composite (scale fragment position to this level)
+                    scaled_x = int((fragment.x / downsample) - min_x)
+                    scaled_y = int((fragment.y / downsample) - min_y)
+                    
+                    # Composite the fragment
+                    self._composite_fragment(composite, transformed_image, scaled_x, scaled_y, fragment.opacity)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error compositing fragment {fragment.name}: {e}")
+                    continue
+            
+            return composite
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create level {level} composite: {str(e)}")
+            return None
+    
+    def _calculate_level_bounds(self, fragments: List[Fragment], level: int, 
+                               pyramid_info: Dict[str, Dict]) -> Optional[Tuple[float, float, float, float]]:
+        """Calculate composite bounds for a specific level"""
         if not fragments:
             return None
         
@@ -481,18 +229,26 @@ class PyramidalExporter:
         
         for fragment in fragments:
             try:
-                # Get original image dimensions at the target level
-                original_dims = self._get_image_dimensions_at_level(fragment.file_path, level)
-                if not original_dims:
+                # Get fragment info
+                frag_info = pyramid_info.get(fragment.id)
+                if not frag_info:
                     continue
                 
-                orig_width, orig_height = original_dims
+                # Get dimensions at this level
+                if level <= frag_info['max_level']:
+                    level_info = frag_info['levels'][level]
+                    orig_width, orig_height = level_info['dimensions']
+                else:
+                    # Use level 0 and calculate downsampled size
+                    level_info = frag_info['levels'][0]
+                    base_width, base_height = level_info['dimensions']
+                    orig_width = int(base_width / downsample)
+                    orig_height = int(base_height / downsample)
                 
-                # Apply transformations to get final dimensions
-                final_dims = self._calculate_transformed_dimensions(
+                # Calculate transformed dimensions
+                final_width, final_height = self._calculate_transformed_dimensions(
                     orig_width, orig_height, fragment.rotation
                 )
-                final_width, final_height = final_dims
                 
                 # Fragment positions are at level 0 scale, scale them for this level
                 scaled_x = fragment.x / downsample
@@ -504,7 +260,7 @@ class PyramidalExporter:
                 max_y = max(max_y, scaled_y + final_height)
                 
             except Exception as e:
-                self.logger.warning(f"Could not get bounds for fragment {fragment.name} at level {level}: {e}")
+                self.logger.warning(f"Could not get bounds for fragment {fragment.name}: {e}")
                 continue
         
         if min_x == float('inf'):
@@ -512,121 +268,110 @@ class PyramidalExporter:
         
         return (min_x, min_y, max_x, max_y)
     
-    def _get_image_dimensions_at_level(self, file_path: str, level: int) -> Optional[Tuple[int, int]]:
-        """Get image dimensions at specific pyramid level"""
+    def _load_fragment_at_level(self, fragment: Fragment, level: int, 
+                               pyramid_info: Dict[str, Dict]) -> Optional[np.ndarray]:
+        """Load fragment image at specific pyramid level"""
         try:
-            from ..core.image_loader import ImageLoader
-            loader = ImageLoader()
+            frag_info = pyramid_info.get(fragment.id)
+            if not frag_info:
+                return None
             
-            # Get pyramid info
-            pyramid_info = loader.get_pyramid_info(file_path)
-            if level < len(pyramid_info['level_dimensions']):
-                return pyramid_info['level_dimensions'][level]
+            with tifffile.TiffFile(fragment.file_path) as tif:
+                if level <= frag_info['max_level']:
+                    # Load at requested level
+                    if frag_info['is_pyramidal']:
+                        image = tif.series[0].levels[level].asarray()
+                    else:
+                        image = tif.pages[0].asarray()
+                else:
+                    # Load at highest available level and downsample
+                    if frag_info['is_pyramidal']:
+                        image = tif.series[0].levels[frag_info['max_level']].asarray()
+                    else:
+                        image = tif.pages[0].asarray()
+                    
+                    # Downsample to requested level
+                    additional_downsample = 2 ** (level - frag_info['max_level'])
+                    if additional_downsample > 1:
+                        new_height = max(1, int(image.shape[0] / additional_downsample))
+                        new_width = max(1, int(image.shape[1] / additional_downsample))
+                        if CV2_AVAILABLE:
+                            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                        else:
+                            from PIL import Image as PILImage
+                            if len(image.shape) == 3:
+                                pil_image = PILImage.fromarray(image)
+                                pil_image = pil_image.resize((new_width, new_height), PILImage.LANCZOS)
+                                image = np.array(pil_image)
+                            else:
+                                # Handle grayscale
+                                pil_image = PILImage.fromarray(image, mode='L')
+                                pil_image = pil_image.resize((new_width, new_height), PILImage.LANCZOS)
+                                image = np.array(pil_image)
+            
+            # Ensure RGBA format
+            image = self._ensure_rgba_format(image)
+            return image
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load fragment {fragment.name} at level {level}: {e}")
+            return None
+    
+    def _ensure_rgba_format(self, image: np.ndarray) -> np.ndarray:
+        """Ensure image is in RGBA format"""
+        if len(image.shape) == 2:
+            # Grayscale to RGBA
+            rgb = np.stack([image] * 3, axis=2)
+            alpha = np.full(image.shape, 255, dtype=image.dtype)
+            return np.dstack([rgb, alpha])
+        elif len(image.shape) == 3:
+            if image.shape[2] == 3:
+                # RGB to RGBA
+                alpha = np.full(image.shape[:2], 255, dtype=image.dtype)
+                return np.dstack([image, alpha])
+            elif image.shape[2] == 4:
+                # Already RGBA
+                return image
             else:
-                # Fallback: calculate from level 0
-                if pyramid_info['level_dimensions']:
-                    base_width, base_height = pyramid_info['level_dimensions'][0]
-                    downsample = 2 ** level
-                    return (int(base_width / downsample), int(base_height / downsample))
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get dimensions for {file_path} at level {level}: {e}")
-            return None
+                raise ValueError(f"Unsupported number of channels: {image.shape[2]}")
+        else:
+            raise ValueError(f"Unsupported image dimensions: {image.shape}")
     
-    def _calculate_transformed_dimensions(self, width: int, height: int, rotation: float) -> Tuple[int, int]:
-        """Calculate dimensions after rotation transformation"""
-        if abs(rotation) < 0.01:
-            return (width, height)
-        
-        # Calculate rotated bounding box
-        angle_rad = math.radians(rotation)
-        cos_a = abs(math.cos(angle_rad))
-        sin_a = abs(math.sin(angle_rad))
-        
-        new_width = int(width * cos_a + height * sin_a)
-        new_height = int(width * sin_a + height * cos_a)
-        
-        return (new_width, new_height)
-    
-    def _render_composite_at_level_corrected(self, fragments: List[Fragment], level: int,
-                                           bounds: Tuple[float, float, float, float]) -> Optional[np.ndarray]:
-        """Render composite with corrected transformation handling"""
+    def _apply_transformations(self, image: np.ndarray, fragment: Fragment) -> Optional[np.ndarray]:
+        """Apply transformations to fragment image"""
         try:
-            min_x, min_y, max_x, max_y = bounds
-            width = int(max_x - min_x)
-            height = int(max_y - min_y)
+            result = image.copy()
             
-            if width <= 0 or height <= 0:
-                return None
-            
-            # Create composite array
-            composite = np.zeros((height, width, 4), dtype=np.uint8)
-            downsample = 2 ** level
-            
-            for fragment in fragments:
-                try:
-                    # Load fragment at correct level with transformations
-                    fragment_image = self._load_and_transform_fragment_corrected(fragment, level)
-                    if fragment_image is None:
-                        continue
-                    
-                    # Calculate position in composite (scale fragment position to this level)
-                    scaled_x = int((fragment.x / downsample) - min_x)
-                    scaled_y = int((fragment.y / downsample) - min_y)
-                    
-                    # Composite the fragment
-                    self._composite_fragment_corrected(composite, fragment_image, scaled_x, scaled_y, fragment.opacity)
-                    
-                except Exception as e:
-                    self.logger.error(f"Error compositing fragment {fragment.name}: {e}")
-                    continue
-            
-            return composite
-            
-        except Exception as e:
-            self.logger.error(f"Failed to render composite at level {level}: {str(e)}")
-            return None
-    
-    def _load_and_transform_fragment_corrected(self, fragment: Fragment, level: int) -> Optional[np.ndarray]:
-        """Load fragment at specific level and apply transformations correctly"""
-        try:
-            from ..core.image_loader import ImageLoader
-            loader = ImageLoader()
-            
-            # Load original image at the specified pyramid level
-            original_image = loader.load_image(fragment.file_path, level)
-            if original_image is None:
-                return None
-            
-            # Apply transformations in correct order
-            transformed_image = original_image.copy()
-            
-            # Apply flips first (these don't change dimensions)
+            # Apply horizontal flip
             if fragment.flip_horizontal:
-                transformed_image = np.fliplr(transformed_image)
+                result = np.fliplr(result)
             
+            # Apply vertical flip
             if fragment.flip_vertical:
-                transformed_image = np.flipud(transformed_image)
+                result = np.flipud(result)
             
-            # Apply rotation last (this changes dimensions)
+            # Apply rotation
             if abs(fragment.rotation) > 0.01:
-                transformed_image = self._rotate_image_opencv(transformed_image, fragment.rotation)
+                result = self._rotate_image(result, fragment.rotation)
             
-            return transformed_image
+            return result
             
         except Exception as e:
-            self.logger.error(f"Failed to load and transform fragment {fragment.name}: {e}")
+            self.logger.error(f"Failed to apply transformations: {e}")
             return None
     
-    def _rotate_image_opencv(self, image: np.ndarray, angle: float) -> np.ndarray:
-        """Rotate image using OpenCV with proper handling of dimensions"""
-        import cv2
-        
+    def _rotate_image(self, image: np.ndarray, angle: float) -> np.ndarray:
+        """Rotate image using OpenCV or PIL"""
         if abs(angle) < 0.01:
             return image
         
+        if CV2_AVAILABLE:
+            return self._rotate_with_opencv(image, angle)
+        else:
+            return self._rotate_with_pil(image, angle)
+    
+    def _rotate_with_opencv(self, image: np.ndarray, angle: float) -> np.ndarray:
+        """Rotate image using OpenCV"""
         height, width = image.shape[:2]
         center = (width // 2, height // 2)
         
@@ -643,28 +388,49 @@ class PyramidalExporter:
         rotation_matrix[0, 2] += (new_width / 2) - center[0]
         rotation_matrix[1, 2] += (new_height / 2) - center[1]
         
-        # Apply rotation with proper border handling
-        if len(image.shape) == 3 and image.shape[2] == 4:
-            # RGBA image
-            rotated = cv2.warpAffine(
-                image, rotation_matrix, (new_width, new_height),
-                flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=(0, 0, 0, 0)
-            )
-        else:
-            # RGB image
-            rotated = cv2.warpAffine(
-                image, rotation_matrix, (new_width, new_height),
-                flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=(0, 0, 0)
-            )
+        # Apply rotation
+        rotated = cv2.warpAffine(
+            image, rotation_matrix, (new_width, new_height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0, 0)
+        )
         
         return rotated
     
-    def _composite_fragment_corrected(self, composite: np.ndarray, fragment_image: np.ndarray,
-                                    x: int, y: int, opacity: float):
+    def _rotate_with_pil(self, image: np.ndarray, angle: float) -> np.ndarray:
+        """Rotate image using PIL (fallback)"""
+        from PIL import Image as PILImage
+        
+        # Convert to PIL Image
+        if len(image.shape) == 3 and image.shape[2] == 4:
+            pil_image = PILImage.fromarray(image, mode='RGBA')
+        else:
+            pil_image = PILImage.fromarray(image)
+        
+        # Rotate with transparent background
+        rotated_pil = pil_image.rotate(-angle, expand=True, fillcolor=(0, 0, 0, 0))
+        
+        # Convert back to numpy
+        return np.array(rotated_pil)
+    
+    def _calculate_transformed_dimensions(self, width: int, height: int, rotation: float) -> Tuple[int, int]:
+        """Calculate dimensions after rotation transformation"""
+        if abs(rotation) < 0.01:
+            return (width, height)
+        
+        # Calculate rotated bounding box
+        angle_rad = math.radians(rotation)
+        cos_a = abs(math.cos(angle_rad))
+        sin_a = abs(math.sin(angle_rad))
+        
+        new_width = int(width * cos_a + height * sin_a)
+        new_height = int(width * sin_a + height * cos_a)
+        
+        return (new_width, new_height)
+    
+    def _composite_fragment(self, composite: np.ndarray, fragment_image: np.ndarray,
+                           x: int, y: int, opacity: float):
         """Composite fragment with proper alpha blending"""
         try:
             frag_h, frag_w = fragment_image.shape[:2]
@@ -686,11 +452,6 @@ class PyramidalExporter:
             
             # Extract regions
             frag_region = fragment_image[src_y1:src_y2, src_x1:src_x2]
-            
-            # Ensure RGBA format
-            if frag_region.shape[2] == 3:
-                alpha_channel = np.full(frag_region.shape[:2] + (1,), 255, dtype=np.uint8)
-                frag_region = np.concatenate([frag_region, alpha_channel], axis=2)
             
             # Apply opacity and alpha blend
             frag_alpha = (frag_region[:, :, 3:4] / 255.0) * opacity
@@ -719,7 +480,7 @@ class PyramidalExporter:
             self.logger.error(f"Failed to composite fragment: {e}")
     
     def _save_pyramidal_tiff(self, level_images: Dict[int, np.ndarray], output_path: str,
-                           compression: str, selected_levels: List[int]) -> bool:
+                           compression: str, tile_size: int) -> bool:
         """Save images as a proper pyramidal TIFF structure"""
         try:
             # Configure compression
@@ -740,7 +501,8 @@ class PyramidalExporter:
                 save_kwargs = {
                     'compression': tiff_compression,
                     'photometric': 'rgb',
-                    'tile': (256, 256)
+                    'tile': (tile_size, tile_size),
+                    'extrasamples': [1]  # Associated alpha
                 }
                 save_kwargs = {k: v for k, v in save_kwargs.items() if v is not None}
                 
@@ -754,12 +516,15 @@ class PyramidalExporter:
                         # Convert RGBA to RGB for JPEG compression
                         if tiff_compression == "jpeg" and image.shape[2] == 4:
                             image = self._rgba_to_rgb(image)
+                            extrasamples = None
+                        else:
+                            extrasamples = [1]  # Associated alpha
                         
                         save_kwargs = {
                             'compression': tiff_compression,
                             'photometric': 'rgb',
-                            'tile': (256, 256),
-                            'subifds': len(sorted_levels) - 1 if i == 0 else None  # Create subIFDs for pyramid
+                            'tile': (tile_size, tile_size),
+                            'extrasamples': extrasamples
                         }
                         save_kwargs = {k: v for k, v in save_kwargs.items() if v is not None}
                         
@@ -784,37 +549,3 @@ class PyramidalExporter:
         result = (alpha * rgb + (1 - alpha) * background).astype(np.uint8)
         
         return result
-
-    @staticmethod
-    def get_recommended_libraries() -> Dict[str, str]:
-        """Get recommended libraries for pyramidal TIFF export"""
-        return {
-            "pyvips": "Recommended - Fast, memory-efficient, true pyramidal TIFF support",
-            "tifffile": "Fallback - Good for simple cases, limited pyramid support", 
-            "openslide": "For reading pyramidal files only",
-            "opencv-python": "Required for image transformations"
-        }
-    
-    @staticmethod
-    def install_instructions() -> str:
-        """Get installation instructions for required libraries"""
-        return """
-To install the recommended libraries for pyramidal TIFF export:
-
-1. Install pyvips (recommended):
-   pip install pyvips
-   
-   Note: pyvips requires libvips to be installed on your system:
-   - Windows: Download from https://github.com/libvips/libvips/releases
-   - macOS: brew install vips
-   - Ubuntu/Debian: apt-get install libvips-dev
-   
-2. Fallback option (tifffile):
-   pip install tifffile
-   
-3. For transformations:
-   pip install opencv-python
-
-For best results, use pyvips as it provides true pyramidal TIFF support
-with proper memory management and performance optimization.
-"""
