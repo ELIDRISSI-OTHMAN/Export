@@ -19,6 +19,58 @@ Une application de bureau professionnelle pour visualiser, manipuler et suturer 
 
 ## Prérequis
 
+### Images Prétraitées Requises
+
+**IMPORTANT :** Cette application est conçue pour fonctionner avec des images tissulaires **prétraitées et préparées** :
+
+#### **Format d'Image Requis :**
+- **TIFF pyramidal** ou **fichiers SVS** avec structure multi-résolution
+- **Images RGBA** (4 canaux : Rouge, Vert, Bleu, Alpha)
+- **Fond transparent** (canal alpha = 0) pour les zones non-tissulaires
+- **Résolution cohérente** entre tous les fragments
+
+#### **Prétraitement Nécessaire :**
+
+**1. Segmentation du Tissu :**
+- Séparation du tissu du fond
+- Suppression des artefacts et bulles d'air
+- Masquage des zones non-pertinentes
+
+**2. Normalisation :**
+- Correction de l'illumination
+- Normalisation des couleurs
+- Ajustement du contraste
+
+**3. Format de Sortie :**
+- Conversion en TIFF pyramidal avec niveaux multiples
+- Canal alpha correctement défini
+- Métadonnées de résolution (microns par pixel)
+
+#### **Structure Pyramidale Recommandée :**
+```
+Niveau 0: Résolution complète (ex: 40x, 0.25 µm/pixel)
+Niveau 1: 1/2 résolution (ex: 20x, 0.5 µm/pixel)
+Niveau 2: 1/4 résolution (ex: 10x, 1.0 µm/pixel)
+Niveau 3: 1/8 résolution (ex: 5x, 2.0 µm/pixel)
+...
+```
+
+#### **Outils de Prétraitement Recommandés :**
+- **QuPath** : Segmentation et export
+- **ImageJ/Fiji** : Traitement d'images
+- **OpenSlide** : Manipulation de fichiers pyramidaux
+- **ASAP** : Annotation et segmentation
+- **Scripts Python personnalisés** avec OpenCV et scikit-image
+
+#### **Exemple de Pipeline de Prétraitement :**
+
+1. **Chargement de l'image source** (SVS, NDPI, etc.)
+2. **Détection automatique du tissu** (seuillage, morphologie)
+3. **Nettoyage du masque** (suppression des petits objets)
+4. **Application du masque** (fond → transparent)
+5. **Création de la pyramide** (downsampling successif)
+6. **Export en TIFF pyramidal** avec compression LZW
+
 ### Configuration Système Requise
 
 - **Système d'exploitation** : Windows 10+, macOS 10.14+, ou Linux (Ubuntu 18.04+)
@@ -152,6 +204,9 @@ Affiche tous les fragments chargés avec :
 
 **Transformations :**
 - **↺ 90°** / **↻ 90°** : Rotation par pas de 90°
+- **Angle personnalisé** : Champ de saisie pour rotation libre
+- **Boutons rapides** : 45°, 135°, 225°, 315°
+- **Ajustement fin** : +1° / -1° pour rotation précise
 - **↔ Horizontal** / **↕ Vertical** : Retournement
 
 **Position :**
@@ -162,6 +217,8 @@ Affiche tous les fragments chargés avec :
 **Rotation de Groupe :**
 - **↺ 90° CCW** : Rotation antihoraire du groupe
 - **↻ 90° CW** : Rotation horaire du groupe
+- **Rotation personnalisée** : Champ d'angle pour rotation libre du groupe
+- **Boutons rapides** : 45°, 135°, 180°, 270°
 
 **Déplacement de Groupe :**
 - **↑ ↓ ← →** : Déplacement du groupe entier
@@ -220,6 +277,23 @@ Pour les fichiers TIFF pyramidaux et SVS :
 - **↺ 90°** : Rotation antihoraire
 - **↻ 90°** : Rotation horaire
 
+**Rotation libre :**
+1. **Saisissez un angle** dans le champ "Angle" (0-360°)
+2. **Cliquez "Appliquer"** ou appuyez sur Entrée
+3. **Utilisez les boutons rapides** : 45°, 135°, 225°, 315°
+4. **Ajustement fin** : +1° et -1° pour rotation précise
+
+**Exemples d'angles courants :**
+- **45°** : Rotation diagonale
+- **135°** : Rotation diagonale inverse
+- **180°** : Retournement complet
+- **270°** : Équivalent à -90°
+
+**Rotation libre (angles personnalisés) :**
+- **Champ de saisie d'angle** : Entrez n'importe quel angle (0-360°)
+- **Boutons prédéfinis** : 45°, 90°, 180°, 270°
+- **Rotation fine** : Boutons +1° et -1° pour ajustements précis
+
 **Comportement :**
 - La rotation se fait autour du centre du fragment
 - L'image est recalculée automatiquement
@@ -265,6 +339,8 @@ Pour les fichiers TIFF pyramidaux et SVS :
 **Rotation de Groupe :**
 - **↺ 90° CCW** : Rotation antihoraire autour du centre du groupe
 - **↻ 90° CW** : Rotation horaire autour du centre du groupe
+- **Angle personnalisé** : Saisissez un angle libre pour le groupe
+- **Rotation fine** : Ajustements par pas de 1°
 
 **Déplacement de Groupe :**
 - **Boutons fléchés** : Déplacement de tous les fragments sélectionnés
@@ -561,8 +637,10 @@ print(f"NumPy: {numpy.__version__}")
 1. **Taille maximale des images** : 8 Go par fragment
 2. **Nombre de fragments** : Recommandé < 50 pour de bonnes performances
 3. **Formats supportés** : Limité aux formats listés ci-dessus
-4. **Transformations** : Rotation par pas de 90° uniquement
+4. **Images non-prétraitées** : Peut causer des problèmes d'alignement
 5. **Suture** : Fonctionne mieux avec des fragments qui se chevauchent
+6. **Mémoire** : Les images très haute résolution peuvent saturer la RAM
+7. **Transparence** : Nécessite des images avec canal alpha correctement défini
 
 ---
 
