@@ -384,7 +384,7 @@ class PyramidalExporter:
             return result
             
         except Exception as e:
-            self.logger.error(f"Failed to apply pyvips transforms: {e}")
+            self.logger.error(f"Failed to fix pyvips colorspace: {e}")
             return image
     
     def _apply_pyvips_transforms(self, image: 'pyvips.Image', fragment: Fragment) -> 'pyvips.Image':
