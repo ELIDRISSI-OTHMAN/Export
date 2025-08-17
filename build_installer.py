@@ -56,11 +56,6 @@ class ImageLoader:
                 return self._load_tiff_image(file_path)
             else:
                 print("ImageLoader: Using standard loader")
-        src_dist = dist_dir / 'src'
-        if not src_dist.exists():
-            print("Copying src directory to dist...")
-            shutil.copytree('src', src_dist)
-    
                 return self._load_standard_image(file_path)
                 
         except Exception as e:
