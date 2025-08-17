@@ -60,22 +60,21 @@ def build_executable():
     """Build the executable using PyInstaller command line"""
     print("=== Building Executable ===")
     
-    # Check if we're in the correct virtual environment
-    if 'VIRTUAL_ENV' in os.environ:
-        venv_path = os.environ['VIRTUAL_ENV']
-        print(f"Using virtual environment: {venv_path}")
-    elif 'CONDA_DEFAULT_ENV' in os.environ:
-        env_name = os.environ['CONDA_DEFAULT_ENV']
-        print(f"Using conda environment: {env_name}")
-        if env_name != 'stitcher':
-            print("WARNING: You should activate the 'stitcher' environment first!")
-            print("Run: conda activate stitcher")
-            return False
-    else:
-        print("WARNING: No virtual environment detected!")
-        print("Please activate your 'stitcher' environment first:")
-        print("Run: conda activate stitcher")
-        return False
+    # Detect current environment
+    current_env = None
+    if 'CONDA_DEFAULT_ENV' in os.environ:
+        current_env = os.environ['CONDA_DEFAULT_ENV']
+        print(f"Current conda environment: {current_env}")
+    elif 'VIRTUAL_ENV' in os.environ:
+        current_env = os.path.basename(os.environ['VIRTUAL_ENV'])
+        print(f"Current virtual environment: {current_env}")
+    
+    # Use the current Python executable (from active environment)
+    python_exe = sys.executable
+    python_dir = os.path.dirname(python_exe)
+    
+    print(f"Using Python executable: {python_exe}")
+    print(f"Python directory: {python_dir}")
     
     # Clean previous builds
     for folder in ['build', 'dist', '__pycache__']:
@@ -83,14 +82,10 @@ def build_executable():
             shutil.rmtree(folder)
             print(f"Cleaned {folder}/")
     
-    # Add Python DLL paths
-    python_dir = os.path.dirname(sys.executable)
+    # Set up paths based on current environment
     python_dlls_dir = os.path.join(python_dir, 'DLLs')
     python_lib_dir = os.path.join(python_dir, 'Library', 'bin')
-    
-    print(f"Python directory: {python_dir}")
-    print(f"Python DLLs directory: {python_dlls_dir}")
-    print(f"Python Library directory: {python_lib_dir}")
+    site_packages = os.path.join(python_dir, 'Lib', 'site-packages')
     
     # Find OpenSlide DLLs
     openslide_dlls = find_openslide_dlls()
@@ -105,9 +100,9 @@ def build_executable():
         from PyQt6.QtCore import QCoreApplication
         print("PyQt6 import test: SUCCESS")
     except ImportError:
-        print(f"ERROR: PyQt6 not found! {e}")
-        print("Make sure you're in the 'stitcher' environment:")
-        print("  conda activate stitcher")
+        print(f"ERROR: PyQt6 not found in current environment! {e}")
+        print(f"Current environment: {current_env}")
+        print("Make sure PyQt6 is installed in your current environment:")
         print("  pip install PyQt6")
         return False
     
@@ -123,6 +118,7 @@ def build_executable():
         "--paths", python_dir,
         "--paths", python_dlls_dir,
         "--paths", python_lib_dir,
+        "--paths", site_packages,
         "--paths", pyqt6_path,
         
         # Add data files
