@@ -218,22 +218,28 @@ class FragmentManager(QObject):
     
     def rotate_group(self, fragment_ids: List[str], angle: int):
         """Rotate multiple fragments around their group center"""
-        print(f"rotate_group called with {len(fragment_ids)} fragments, angle: {angle}")
         if not fragment_ids:
             return
         
         # Get fragments
         fragments = [self._fragments[fid] for fid in fragment_ids if fid in self._fragments]
         if not fragments:
-            print("No valid fragments found!")
             return
         
-        print(f"Found {len(fragments)} valid fragments to rotate")
+        # Calculate group center using fragment centers (including their dimensions)
+        total_center_x = 0
+        total_center_y = 0
         
-        # Calculate group center (centroid) using fragment positions, not bounding boxes
-        center_x = sum(f.x for f in fragments) / len(fragments)
-        center_y = sum(f.y for f in fragments) / len(fragments)
-        print(f"Group center: ({center_x}, {center_y})")
+        for fragment in fragments:
+            # Get fragment's center point
+            bbox = fragment.get_bounding_box()
+            fragment_center_x = bbox[0] + bbox[2] / 2  # x + width/2
+            fragment_center_y = bbox[1] + bbox[3] / 2  # y + height/2
+            total_center_x += fragment_center_x
+            total_center_y += fragment_center_y
+        
+        center_x = total_center_x / len(fragments)
+        center_y = total_center_y / len(fragments)
         
         # Convert angle to radians
         angle_rad = math.radians(angle)
@@ -242,24 +248,33 @@ class FragmentManager(QObject):
         
         # Rotate each fragment around the group center
         for fragment in fragments:
-            # Translate fragment position to origin (relative to group center)
-            rel_x = fragment.x - center_x
-            rel_y = fragment.y - center_y
+            # Get fragment's current center
+            bbox = fragment.get_bounding_box()
+            fragment_center_x = bbox[0] + bbox[2] / 2
+            fragment_center_y = bbox[1] + bbox[3] / 2
+            
+            # Translate fragment center to origin (relative to group center)
+            rel_x = fragment_center_x - center_x
+            rel_y = fragment_center_y - center_y
             
             # Rotate around origin
             new_rel_x = rel_x * cos_a - rel_y * sin_a
             new_rel_y = rel_x * sin_a + rel_y * cos_a
             
-            # Translate back to world coordinates
-            fragment.x = center_x + new_rel_x
-            fragment.y = center_y + new_rel_y
+            # Calculate new fragment position (top-left corner)
+            new_center_x = center_x + new_rel_x
+            new_center_y = center_y + new_rel_y
             
-            # Also rotate the fragment itself
+            # Convert back to top-left position
+            # Note: We need to recalculate bbox after rotation
             fragment.rotation = (fragment.rotation + angle) % 360.0
             fragment.invalidate_cache()
-            print(f"Rotated fragment {fragment.name}: new pos=({fragment.x:.1f}, {fragment.y:.1f}), new rotation={fragment.rotation}")
-        
-        print("Group rotation completed, emitting fragments_changed")
+            
+            # Get new bounding box after rotation
+            new_bbox = fragment.get_bounding_box()
+            fragment.x = new_center_x - new_bbox[2] / 2  # center_x - width/2
+            fragment.y = new_center_y - new_bbox[3] / 2  # center_y - height/2
+            
         self.fragments_changed.emit()
     
     def flip_fragment(self, fragment_id: str, horizontal: bool = True):

@@ -450,17 +450,14 @@ class MainWindow(QMainWindow):
         # Handle group transformations FIRST
         if fragment_id == 'group':
             if transform_type == 'rotate_cw':
-                # value contains fragment_ids
-                print(f"Group rotate CW: {value}")
-                self.fragment_manager.rotate_group(value, 90)
+                fragment_ids = value
+                self.fragment_manager.rotate_group(fragment_ids, 90)
             elif transform_type == 'rotate_ccw':
-                # value contains fragment_ids  
-                print(f"Group rotate CCW: {value}")
-                self.fragment_manager.rotate_group(value, -90)
+                fragment_ids = value
+                self.fragment_manager.rotate_group(fragment_ids, -90)
             elif transform_type == 'translate':
                 # For group translation, value contains (fragment_ids, (dx, dy))
                 fragment_ids, (dx, dy) = value
-                print(f"Group translate: {fragment_ids}, dx={dx}, dy={dy}")
                 self.fragment_manager.translate_group(fragment_ids, dx, dy)
             return  # Important: return early for group operations
         else:

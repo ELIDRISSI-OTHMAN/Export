@@ -189,8 +189,11 @@ class CanvasWidget(QWidget):
         for fragment in fragments:
             old_fragment = next((f for f in self.fragments if f.id == fragment.id), None)
             
-            # Always mark as dirty if fragment is new or cache is invalid
-            needs_update = (fragment.id not in old_fragment_ids or not fragment.cache_valid)
+            # Mark as dirty if fragment is new, cache is invalid, or transformations changed
+            needs_update = (fragment.id not in old_fragment_ids or 
+                          not fragment.cache_valid or
+                          not hasattr(fragment, 'cache_valid') or
+                          fragment.cache_valid == False)
             
             # Check for any changes that require re-rendering
             if old_fragment:
@@ -214,7 +217,7 @@ class CanvasWidget(QWidget):
                     needs_update = True
                 elif position_changed:
                     # Position changes don't require re-rendering, just re-display
-                    pass
+                    self.update()  # Trigger display update for position changes
             
             if needs_update:
                 self.dirty_fragments.add(fragment.id)
@@ -588,7 +591,8 @@ class CanvasWidget(QWidget):
                             int(world_pos.y() - clicked_fragment.y)
                         )
                 else:
-                    # Start panning
+                    # Clear selection and start panning
+                    self.group_selected.emit([])  # Clear group selection
                     self.is_panning = True
                 
         elif event.button() == Qt.MouseButton.MiddleButton:

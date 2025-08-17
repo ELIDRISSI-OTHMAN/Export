@@ -188,20 +188,15 @@ class ControlPanel(QWidget):
         
     def request_group_rotation(self, direction: str):
         """Request group rotation"""
-        print(f"request_group_rotation called: {direction}, group_selected: {self.is_group_selected}, ids: {self.selected_fragment_ids}")
         if self.is_group_selected and self.selected_fragment_ids:
             if direction == 'cw':
-                print("Emitting group rotate_cw signal")
                 self.transform_requested.emit('group', 'rotate_cw', self.selected_fragment_ids)
             elif direction == 'ccw':
-                print("Emitting group rotate_ccw signal")
                 self.transform_requested.emit('group', 'rotate_ccw', self.selected_fragment_ids)
     
     def request_group_translation(self, dx: float, dy: float):
         """Request group translation"""
-        print(f"request_group_translation called: dx={dx}, dy={dy}, group_selected: {self.is_group_selected}, ids: {self.selected_fragment_ids}")
         if self.is_group_selected and self.selected_fragment_ids:
-            print("Emitting group translate signal")
             self.transform_requested.emit('group', 'translate', (self.selected_fragment_ids, (dx, dy)))
     
     def setup_info_group(self):
