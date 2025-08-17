@@ -15,16 +15,15 @@ class ControlPanel(QWidget):
     """Control panel for fragment transformation and properties"""
     
     transform_requested = pyqtSignal(str, str, object)  # fragment_id, transform_type, value
-    group_transform_requested = pyqtSignal(str, list)  # transform_type, fragment_ids
+    group_rotation_requested = pyqtSignal(int)  # angle in degrees
+    group_translation_requested = pyqtSignal(float, float)  # dx, dy
     reset_transform_requested = pyqtSignal(str)  # fragment_id
     
     def __init__(self):
         super().__init__()
         self.current_fragment: Optional[Fragment] = None
-        
-        # Group selection state
-        self.selected_fragment_ids: List[str] = []
-        self.is_group_selected = False
+        self.has_group_selection = False
+        self.group_fragment_count = 0
         
         self.setup_ui()
         self.update_controls()
@@ -151,30 +150,30 @@ class ControlPanel(QWidget):
         # Up
         self.group_up_btn = QPushButton("↑")
         self.group_up_btn.setMinimumSize(40, 40)
-        self.group_up_btn.clicked.connect(lambda: self.request_group_translation(0, -10))
+        self.group_up_btn.clicked.connect(lambda: self.group_translation_requested.emit(0, -10))
         movement_grid.addWidget(self.group_up_btn, 0, 1)
         
         # Left, Center, Right
         self.group_left_btn = QPushButton("←")
         self.group_left_btn.setMinimumSize(40, 40)
-        self.group_left_btn.clicked.connect(lambda: self.request_group_translation(-10, 0))
+        self.group_left_btn.clicked.connect(lambda: self.group_translation_requested.emit(-10, 0))
         movement_grid.addWidget(self.group_left_btn, 1, 0)
         
         self.group_center_btn = QPushButton("⌂")
         self.group_center_btn.setMinimumSize(40, 40)
         self.group_center_btn.setToolTip("Center group")
-        self.group_center_btn.clicked.connect(lambda: self.request_group_translation(0, 0))
+        self.group_center_btn.clicked.connect(lambda: self.group_translation_requested.emit(0, 0))
         movement_grid.addWidget(self.group_center_btn, 1, 1)
         
         self.group_right_btn = QPushButton("→")
         self.group_right_btn.setMinimumSize(40, 40)
-        self.group_right_btn.clicked.connect(lambda: self.request_group_translation(10, 0))
+        self.group_right_btn.clicked.connect(lambda: self.group_translation_requested.emit(10, 0))
         movement_grid.addWidget(self.group_right_btn, 1, 2)
         
         # Down
         self.group_down_btn = QPushButton("↓")
         self.group_down_btn.setMinimumSize(40, 40)
-        self.group_down_btn.clicked.connect(lambda: self.request_group_translation(0, 10))
+        self.group_down_btn.clicked.connect(lambda: self.group_translation_requested.emit(0, 10))
         movement_grid.addWidget(self.group_down_btn, 2, 1)
         
         movement_layout.addLayout(movement_grid)
@@ -184,25 +183,21 @@ class ControlPanel(QWidget):
         self.group_reset_btn = QPushButton("Reset All Group Transforms")
         self.group_reset_btn.setMinimumHeight(40)
         self.group_reset_btn.setStyleSheet("QPushButton { background-color: #d32f2f; color: white; font-weight: bold; }")
-        self.group_reset_btn.clicked.connect(self.request_group_reset)
+        self.group_reset_btn.clicked.connect(self.reset_group_transforms)
         layout.addWidget(self.group_reset_btn)
         
     def request_group_rotation(self, direction: str):
         """Request group rotation"""
-        if len(self.selected_fragment_ids) > 1:
-            print(f"Requesting group rotation {direction} for fragments: {self.selected_fragment_ids}")
-            if direction == 'cw':
-                self.group_transform_requested.emit('rotate_cw', self.selected_fragment_ids)
-            elif direction == 'ccw':
-                self.group_transform_requested.emit('rotate_ccw', self.selected_fragment_ids)
+        print(f"Group rotation {direction} requested")
+        if direction == 'cw':
+            self.group_rotation_requested.emit(90)
+        elif direction == 'ccw':
+            self.group_rotation_requested.emit(-90)
     
-    def request_group_translation(self, dx: float, dy: float):
-        """Request group translation"""
-        if self.is_group_selected and len(self.selected_fragment_ids) > 1:
-            print(f"Requesting group translation ({dx}, {dy}) for fragments: {self.selected_fragment_ids}")
-            self.transform_requested.emit('group', 'translate', (self.selected_fragment_ids, (dx, dy)))
-        else:
-            print(f"Cannot translate group: is_group_selected={self.is_group_selected}, fragment_count={len(self.selected_fragment_ids)}")
+    def reset_group_transforms(self):
+        """Reset all group fragment transforms"""
+        print("Group reset requested")
+        # This will be handled by the main window
     
     def setup_info_group(self):
         """Setup fragment information display"""
@@ -364,104 +359,71 @@ class ControlPanel(QWidget):
     def set_selected_fragment(self, fragment: Optional[Fragment]):
         """Set the currently selected fragment"""
         self.current_fragment = fragment
-        self.selected_fragment_ids = []
-        self.is_group_selected = False
+        self.has_group_selection = False
+        self.group_fragment_count = 0
         
         # Switch to fragment tab
         self.tab_widget.setCurrentWidget(self.fragment_tab)
-        self.group_tab.setEnabled(False)
-        self.fragment_tab.setEnabled(True)
         
         self.update_controls()
     
-    def set_selected_fragments(self, fragment_ids: List[str], fragments: List[Fragment]):
+    def set_group_selection(self, fragment_count: int):
         """Set multiple selected fragments (group selection)"""
-        self.selected_fragment_ids = fragment_ids
-        self.is_group_selected = True
-        self.current_fragment = fragments[0] if fragments else None  # Use first fragment for display
+        self.has_group_selection = fragment_count > 1
+        self.group_fragment_count = fragment_count
+        self.current_fragment = None
         
-        if len(fragment_ids) > 1:
+        if self.has_group_selection:
             # Switch to group tab
             self.tab_widget.setCurrentWidget(self.group_tab)
-            self.group_tab.setEnabled(True)
-            self.fragment_tab.setEnabled(False)
-            
-            # Update group info
-            self.group_name_label.setText(f"Group Selection ({len(fragment_ids)} fragments)")
-            print(f"DEBUG: Group selected with {len(fragment_ids)} fragments")
         else:
-            # Single fragment or no selection - switch to fragment tab
+            # Switch to fragment tab
             self.tab_widget.setCurrentWidget(self.fragment_tab)
-            self.fragment_tab.setEnabled(True)
-            self.group_tab.setEnabled(False)
-            self.is_group_selected = False
         
         self.update_controls()
         
     def update_controls(self):
         """Update control states based on current fragment"""
-        has_fragment = self.current_fragment is not None
-        has_group = len(self.selected_fragment_ids) > 1
+        print(f"Updating controls: has_group={self.has_group_selection}, count={self.group_fragment_count}")
         
-        if has_group:
-            # Enable all group controls when group is selected
+        if self.has_group_selection:
+            # Group selection mode
+            self.group_tab.setEnabled(True)
+            self.fragment_tab.setEnabled(False)
+            
+            # Update group info
+            self.group_name_label.setText(f"Group Selection ({self.group_fragment_count} fragments)")
+            
+            # Enable all group controls
             self.group_rotation_group.setEnabled(True)
             self.group_movement_group.setEnabled(True)
             self.group_reset_btn.setEnabled(True)
             
-            # Enable all group buttons
-            self.group_rotate_ccw_btn.setEnabled(True)
-            self.group_rotate_cw_btn.setEnabled(True)
-            self.group_up_btn.setEnabled(True)
-            self.group_down_btn.setEnabled(True)
-            self.group_left_btn.setEnabled(True)
-            self.group_right_btn.setEnabled(True)
-            self.group_center_btn.setEnabled(True)
+            # Make sure buttons are enabled
+            for btn in [self.group_rotate_ccw_btn, self.group_rotate_cw_btn,
+                       self.group_up_btn, self.group_down_btn, self.group_left_btn, 
+                       self.group_right_btn, self.group_center_btn]:
+                btn.setEnabled(True)
             
-            # Update group info
-            self.group_name_label.setText(f"Group Selection ({len(self.selected_fragment_ids)} fragments)")
-            
-            # Switch to group tab
-            self.group_tab.setEnabled(True)
-            self.fragment_tab.setEnabled(False)
             self.tab_widget.setCurrentWidget(self.group_tab)
             
-        elif has_fragment:
-            # Single fragment selection - enable everything
+        elif self.current_fragment:
+            # Single fragment mode
+            self.fragment_tab.setEnabled(True)
+            self.group_tab.setEnabled(False)
+            
             self.transform_group.setEnabled(True)
             self.position_group.setEnabled(True)
             self.display_group.setEnabled(True)
             
-            # Disable group controls
-            self.group_rotation_group.setEnabled(False)
-            self.group_movement_group.setEnabled(False)
-            self.group_reset_btn.setEnabled(False)
-            
-            # Switch to fragment tab
-            self.fragment_tab.setEnabled(True)
-            self.group_tab.setEnabled(False)
             self.tab_widget.setCurrentWidget(self.fragment_tab)
             
             fragment = self.current_fragment
-            
-            # Enable all controls for single fragments
-            self.angle_spinbox.setEnabled(True)
-            self.angle_45_btn.setEnabled(True)
-            self.angle_neg45_btn.setEnabled(True)
-            self.rotate_cw_btn.setEnabled(True)
-            self.rotate_ccw_btn.setEnabled(True)
-            self.flip_h_btn.setEnabled(True)
-            self.flip_v_btn.setEnabled(True)
-            self.x_spinbox.setEnabled(True)
-            self.y_spinbox.setEnabled(True)
             
             # Update info
             self.name_label.setText(fragment.name or f"Fragment {fragment.id[:8]}")
             self.size_label.setText(f"Size: {fragment.original_size[0]} × {fragment.original_size[1]}")
             self.file_label.setText(f"File: {fragment.file_path}")
-            
-            self.visible_checkbox.setEnabled(True)
-            self.opacity_slider.setEnabled(True)
             
             # Update position controls (block signals to prevent recursion)
             self.x_spinbox.blockSignals(True)
@@ -490,13 +452,19 @@ class ControlPanel(QWidget):
             self.update_transform_button_states()
             
         else:
-            # No selection - disable everything
+            # No selection
+            self.fragment_tab.setEnabled(True)
+            self.group_tab.setEnabled(False)
+            
             self.transform_group.setEnabled(False)
             self.position_group.setEnabled(False)
             self.display_group.setEnabled(False)
+            
             self.name_label.setText("No selection")
             self.size_label.setText("Size: -")
             self.file_label.setText("File: -")
+            
+            self.tab_widget.setCurrentWidget(self.fragment_tab)
         
     def update_transform_button_states(self):
         """Update the visual state of transform buttons"""
@@ -518,31 +486,13 @@ class ControlPanel(QWidget):
             
     def request_transform(self, transform_type: str, value=None):
         """Request a transformation for the current fragment"""
-        if self.current_fragment and not self.is_group_selected:
+        if self.current_fragment and not self.has_group_selection:
             # Handle single fragment transformations
             self.transform_requested.emit(self.current_fragment.id, transform_type, value)
-    
-    def request_group_transform(self, transform_type: str, value=None):
-        """Request a transformation for the group"""
-        if self.is_group_selected:
-            if transform_type in ['rotate_cw', 'rotate_ccw']:
-                self.transform_requested.emit('group', transform_type, self.selected_fragment_ids)
-            elif transform_type == 'translate':
-                self.transform_requested.emit('group', transform_type, (self.selected_fragment_ids, value))
-    
-    def request_group_reset(self):
-        """Request reset of all group fragment transforms"""
-        if self.is_group_selected:
-            for fragment_id in self.selected_fragment_ids:
-                self.reset_transform_requested.emit(fragment_id)
             
     def request_reset(self):
         """Request reset of current fragment transforms"""
-        if self.is_group_selected:
-            # Reset all fragments in group
-            for fragment_id in self.selected_fragment_ids:
-                self.reset_transform_requested.emit(fragment_id)
-        elif self.current_fragment:
+        if self.current_fragment:
             self.reset_transform_requested.emit(self.current_fragment.id)
             
     def on_position_changed(self):
