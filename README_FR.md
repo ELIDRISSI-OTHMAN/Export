@@ -24,7 +24,7 @@ Une application de bureau professionnelle pour visualiser, manipuler et suturer 
 **IMPORTANT :** Cette application est conçue pour fonctionner avec des images tissulaires **prétraitées et préparées** :
 
 #### **Format d'Image Requis :**
-- **TIFF pyramidal** ou **fichiers SVS** avec structure multi-résolution
+- **TIFF pyramidal** avec structure multi-résolution
 - **Images RGBA** (4 canaux : Rouge, Vert, Bleu, Alpha)
 - **Fond transparent** (canal alpha = 0) pour les zones non-tissulaires
 - **Résolution cohérente** entre tous les fragments
@@ -61,7 +61,7 @@ Niveau 3: 1/8 résolution (ex: 5x, 2.0 µm/pixel)
 
 #### **Exemple de Pipeline de Prétraitement :**
 
-1. **Chargement de l'image source** (SVS, NDPI, etc.)
+1. **Chargement de l'image source** (TIFF haute résolution)
 2. **Détection automatique du tissu** (seuillage, morphologie)
 3. **Nettoyage du masque** (suppression des petits objets)
 4. **Application du masque** (fond → transparent)
@@ -224,11 +224,10 @@ Affiche tous les fragments chargés avec :
 
 ### Formats Supportés
 
-L'application supporte les formats suivants :
-- **TIFF/TIF** : Images TIFF standard et pyramidales
-- **SVS** : Fichiers Aperio ScanScope
-- **PNG** : Images PNG standard
-- **JPG/JPEG** : Images JPEG standard
+L'application est conçue pour fonctionner avec :
+- **TIFF/TIF** : Images TIFF pyramidales prétraitées
+
+**Note importante :** Bien que le code supporte techniquement d'autres formats (PNG, JPEG), l'application est optimisée pour des fichiers TIFF pyramidaux prétraités avec canal alpha.
 
 ### Procédure de Chargement
 
@@ -239,7 +238,7 @@ L'application supporte les formats suivants :
 
 ### Gestion des Images Pyramidales
 
-Pour les fichiers TIFF pyramidaux et SVS :
+Pour les fichiers TIFF pyramidaux :
 - L'application charge automatiquement le niveau approprié
 - Les niveaux de résolution sont gérés automatiquement
 - L'exportation peut préserver la structure pyramidale
