@@ -387,6 +387,30 @@ class PyramidalExporter:
             self.logger.error(f"Failed to apply pyvips transforms: {e}")
             return image
     
+    def _apply_pyvips_transforms(self, image: 'pyvips.Image', fragment: Fragment) -> 'pyvips.Image':
+        """Apply transformations to pyvips image"""
+        try:
+            result = image
+            
+            # Apply horizontal flip
+            if fragment.flip_horizontal:
+                result = result.fliphor()
+            
+            # Apply vertical flip
+            if fragment.flip_vertical:
+                result = result.flipver()
+            
+            # Apply rotation
+            if abs(fragment.rotation) > 0.01:
+                # pyvips rotate expects angle in degrees
+                result = result.rotate(fragment.rotation, background=[0, 0, 0, 0])
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to apply pyvips transforms: {e}")
+            return image
+    
     def _get_pyvips_save_options(self, compression: str, tile_size: int) -> Dict:
         """Get pyvips save options for different compression types"""
         options = {
