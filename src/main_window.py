@@ -107,8 +107,9 @@ class MainWindow(QMainWindow):
         
         # Control panel connections
         self.control_panel.transform_requested.connect(self.apply_transform)
-        self.control_panel.group_rotation_requested.connect(self.apply_group_rotation)
-        self.control_panel.group_translation_requested.connect(self.apply_group_translation)
+        self.control_panel.group_rotate_cw.connect(lambda: self.apply_group_rotation(90))
+        self.control_panel.group_rotate_ccw.connect(lambda: self.apply_group_rotation(-90))
+        self.control_panel.group_translate.connect(self.apply_group_translation)
         self.control_panel.reset_transform_requested.connect(self.reset_fragment_transform)
         
         # Canvas connections

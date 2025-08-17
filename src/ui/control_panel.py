@@ -15,8 +15,9 @@ class ControlPanel(QWidget):
     """Control panel for fragment transformation and properties"""
     
     transform_requested = pyqtSignal(str, str, object)  # fragment_id, transform_type, value
-    group_rotation_requested = pyqtSignal(int)  # angle in degrees
-    group_translation_requested = pyqtSignal(float, float)  # dx, dy
+    group_rotate_cw = pyqtSignal()
+    group_rotate_ccw = pyqtSignal()
+    group_translate = pyqtSignal(float, float)  # dx, dy
     reset_transform_requested = pyqtSignal(str)  # fragment_id
     
     def __init__(self):
@@ -150,30 +151,30 @@ class ControlPanel(QWidget):
         # Up
         self.group_up_btn = QPushButton("↑")
         self.group_up_btn.setMinimumSize(40, 40)
-        self.group_up_btn.clicked.connect(lambda: self.group_translation_requested.emit(0, -10))
+        self.group_up_btn.clicked.connect(lambda: self.group_translate.emit(0, -10))
         movement_grid.addWidget(self.group_up_btn, 0, 1)
         
         # Left, Center, Right
         self.group_left_btn = QPushButton("←")
         self.group_left_btn.setMinimumSize(40, 40)
-        self.group_left_btn.clicked.connect(lambda: self.group_translation_requested.emit(-10, 0))
+        self.group_left_btn.clicked.connect(lambda: self.group_translate.emit(-10, 0))
         movement_grid.addWidget(self.group_left_btn, 1, 0)
         
         self.group_center_btn = QPushButton("⌂")
         self.group_center_btn.setMinimumSize(40, 40)
         self.group_center_btn.setToolTip("Center group")
-        self.group_center_btn.clicked.connect(lambda: self.group_translation_requested.emit(0, 0))
+        self.group_center_btn.clicked.connect(lambda: self.group_translate.emit(0, 0))
         movement_grid.addWidget(self.group_center_btn, 1, 1)
         
         self.group_right_btn = QPushButton("→")
         self.group_right_btn.setMinimumSize(40, 40)
-        self.group_right_btn.clicked.connect(lambda: self.group_translation_requested.emit(10, 0))
+        self.group_right_btn.clicked.connect(lambda: self.group_translate.emit(10, 0))
         movement_grid.addWidget(self.group_right_btn, 1, 2)
         
         # Down
         self.group_down_btn = QPushButton("↓")
         self.group_down_btn.setMinimumSize(40, 40)
-        self.group_down_btn.clicked.connect(lambda: self.group_translation_requested.emit(0, 10))
+        self.group_down_btn.clicked.connect(lambda: self.group_translate.emit(0, 10))
         movement_grid.addWidget(self.group_down_btn, 2, 1)
         
         movement_layout.addLayout(movement_grid)
@@ -190,9 +191,8 @@ class ControlPanel(QWidget):
         """Request group rotation"""
         print(f"Group rotation {direction} requested")
         if direction == 'cw':
-            self.group_rotation_requested.emit(90)
+            self.group_rotate_cw.emit()
         elif direction == 'ccw':
-            self.group_rotation_requested.emit(-90)
     
     def reset_group_transforms(self):
         """Reset all group fragment transforms"""
