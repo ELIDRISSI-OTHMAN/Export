@@ -58,6 +58,9 @@ a = Analysis(
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
         'PyQt6.QtOpenGLWidgets',
+        'PyQt6.sip',
+        'PyQt6.QtPrintSupport',
+        'PyQt6.QtSvg',
         'cv2',
         'numpy',
         'PIL',
@@ -99,7 +102,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=True,  # Enable console for debugging
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -129,14 +132,49 @@ def build_executable():
     """Build the executable using PyInstaller"""
     print("\n=== Building Executable ===")
     
+    # Clean previous builds
+    import shutil
+    for folder in ['build', 'dist', '__pycache__']:
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+            print(f"Cleaned {folder}/")
+    
     # Create spec file
     if not create_pyinstaller_spec():
         return False
     
     # Build with PyInstaller
-    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "--log-level=INFO", "app.spec"]
+    cmd = [
+        sys.executable, "-m", "PyInstaller", 
+        "--clean", 
+        "--log-level=INFO",
+        "--collect-all", "PyQt6",
+        "--collect-all", "cv2", 
+        "--collect-all", "numpy",
+        "app.spec"
+    ]
     if not run_command(cmd):
         print("PyInstaller build failed")
+        return False
+    
+    # Verify the build
+    exe_path = "dist/TissueFragmentStitching/TissueFragmentStitching.exe"
+    if os.path.exists(exe_path):
+        print(f"✓ Executable created: {exe_path}")
+        
+        # Test the executable
+        print("Testing executable...")
+        test_cmd = [exe_path, "--help"]
+        try:
+            result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                print("✓ Executable test passed")
+            else:
+                print(f"⚠ Executable test failed: {result.stderr}")
+        except Exception as e:
+            print(f"⚠ Could not test executable: {e}")
+    else:
+        print("❌ Executable not found after build")
         return False
     
     print("✓ Executable built successfully")
