@@ -117,13 +117,51 @@ def get_openslide_binaries():
             openslide_path.parent / "openslide" / "bin",
             Path(sys.prefix) / "Library" / "bin",  # Conda
             Path(sys.prefix) / "Lib" / "site-packages" / "openslide" / "bin",
+            Path(sys.prefix) / "DLLs",  # Conda DLLs folder
+            Path(sys.prefix) / "Library" / "usr" / "bin",  # Conda usr/bin
+            Path(sys.prefix) / "pkgs" / "openslide" / "Library" / "bin",  # Conda package cache
+            openslide_path / ".." / ".." / ".." / "Library" / "bin",  # Conda relative path
         ]
         
+        print(f"OpenSlide module path: {openslide_path}")
+        print(f"Python prefix: {sys.prefix}")
+        print("Searching for OpenSlide DLLs in:")
+        
         for path in possible_paths:
+            abs_path = Path(path).resolve()
+            print(f"  Checking: {abs_path}")
             if path.exists():
-                for dll_file in path.glob("*.dll"):
-                    binaries.append((str(dll_file), "openslide_bin"))
-                break
+                dll_files = list(path.glob("*openslide*.dll")) + list(path.glob("*slide*.dll"))
+                if dll_files:
+                    print(f"  ✓ Found {len(dll_files)} OpenSlide DLLs in {abs_path}")
+                    for dll_file in dll_files:
+                        print(f"    - {dll_file.name}")
+                        binaries.append((str(dll_file), "openslide_bin"))
+                    break
+                else:
+                    all_dlls = list(path.glob("*.dll"))
+                    if all_dlls:
+                        print(f"  Found {len(all_dlls)} DLLs but none match OpenSlide pattern")
+                    else:
+                        print(f"  No DLL files found")
+            else:
+                print(f"  Path does not exist")
+        
+        # Also search for specific OpenSlide DLL names in system PATH
+        if not binaries:
+            print("Searching system PATH for OpenSlide DLLs...")
+            import shutil
+            openslide_dll_names = [
+                "libopenslide-0.dll",
+                "openslide.dll", 
+                "libopenslide.dll"
+            ]
+            
+            for dll_name in openslide_dll_names:
+                dll_path = shutil.which(dll_name)
+                if dll_path:
+                    print(f"  ✓ Found {dll_name} in PATH: {dll_path}")
+                    binaries.append((dll_path, "openslide_bin"))
                 
         print(f"Found {len(binaries)} OpenSlide DLL files")
         
