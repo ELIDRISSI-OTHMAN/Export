@@ -100,6 +100,10 @@ def build_executable():
         print("PyQt6 import test: SUCCESS")
     except ImportError:
         print(f"ERROR: PyQt6 not found in current environment! {e}")
+        print("Make sure PyQt6 is installed in your current environment:")
+        print("  pip install PyQt6")
+        return False
+    
     # Create spec file to avoid command line length issues
     spec_content = create_spec_file(python_dir, pyqt6_path, all_dlls)
     
@@ -137,7 +141,7 @@ def create_spec_file(python_dir, pyqt6_path, all_dlls):
     for dll in all_dlls:
         binaries_list.append(f"(r'{dll}', '.')")
     
-    binaries_str = ",\n    ".join(binaries_list)
+    binaries_str = ",\n        ".join(binaries_list)
     
     spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
 
@@ -229,113 +233,6 @@ coll = COLLECT(
 )
 '''
     return spec_content
-        print(f"Current environment: {current_env}")
-        print("Make sure PyQt6 is installed in your current environment:")
-        print("  pip install PyQt6")
-        return False
-    
-    # Build PyInstaller command
-    cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--onedir",
-        "--windowed",
-        "--name", "TissueFragmentStitching",
-        "--clean",
-        
-        # Add Python paths
-        "--paths", python_dir,
-        "--paths", python_dlls_dir,
-        "--paths", python_lib_dir,
-        "--paths", site_packages,
-        "--paths", pyqt6_path,
-        
-        # Add data files
-        "--add-data", "src;src",
-        "--add-data", "README.md;.",
-        
-        # Collect all PyQt6 modules
-        "--collect-all", "PyQt6",
-        "--collect-all", "PyQt6.QtCore",
-        "--collect-all", "PyQt6.QtGui", 
-        "--collect-all", "PyQt6.QtWidgets",
-        "--collect-all", "PyQt6.QtOpenGLWidgets",
-        
-        # Hidden imports
-        "--hidden-import", "PyQt6.QtCore",
-        "--hidden-import", "PyQt6.QtGui", 
-        "--hidden-import", "PyQt6.QtWidgets",
-        "--hidden-import", "PyQt6.QtOpenGLWidgets",
-        "--hidden-import", "PyQt6.sip",
-        "--hidden-import", "PyQt6.QtPrintSupport",
-        "--hidden-import", "sip",
-        "--hidden-import", "cv2",
-        "--hidden-import", "numpy",
-        "--hidden-import", "PIL",
-        "--hidden-import", "PIL.Image",
-        "--hidden-import", "PIL.ImageTk",
-        "--hidden-import", "openslide",
-        "--hidden-import", "openslide._convert",
-        "--hidden-import", "openslide.lowlevel",
-        "--hidden-import", "skimage",
-        "--hidden-import", "skimage.feature",
-        "--hidden-import", "skimage.transform",
-        "--hidden-import", "scipy",
-        "--hidden-import", "scipy.optimize",
-        "--hidden-import", "matplotlib",
-        "--hidden-import", "tifffile",
-        "--hidden-import", "pkg_resources.py2_warn",
-        
-        # Exclude unnecessary modules
-        "--exclude-module", "tkinter",
-        "--exclude-module", "matplotlib.tests",
-        "--exclude-module", "numpy.tests",
-        "--exclude-module", "scipy.tests",
-        "--exclude-module", "torch",
-        "--exclude-module", "tensorflow",
-        "--exclude-module", "jupyter",
-        "--exclude-module", "IPython",
-        
-        # Runtime options to help with DLL loading
-        "--runtime-tmpdir", ".",
-        
-        "main.py"
-    ]
-    
-    # Add OpenSlide DLLs
-    if openslide_dlls and len(openslide_dlls) > 0:
-        print("Adding ALL DLLs to build:")
-        for dll in openslide_dlls:
-            print(f"  Adding: {dll}")
-            cmd.extend(["--add-binary", f"{dll};."])
-    else:
-        print("WARNING: No DLLs found")
-    
-    # Run PyInstaller
-    if not run_command(cmd):
-        print("PyInstaller build failed")
-        return False
-    
-    # Verify the build
-    if sys.platform == "win32":
-        exe_path = "dist/TissueFragmentStitching/TissueFragmentStitching.exe"
-    else:
-        exe_path = "dist/TissueFragmentStitching/TissueFragmentStitching"
-        
-    if os.path.exists(exe_path):
-        print(f"Executable created: {exe_path}")
-        
-        # Verify OpenSlide DLLs are in the right place
-        dist_dir = "dist/TissueFragmentStitching"
-        if os.path.exists(dist_dir):
-            dll_count = len([f for f in os.listdir(dist_dir) if f.endswith('.dll')])
-            print(f"DLLs copied to dist: {dll_count}")
-        else:
-            print("WARNING: dist directory not found")
-            
-        return True
-    else:
-        print("Executable not found after build")
-        return False
 
 def create_installer_script():
     """Create Inno Setup installer script"""
