@@ -73,6 +73,9 @@ a = Analysis(
         'PIL',
         'PIL.Image',
         'openslide',
+        'openslide._convert',
+        'openslide.lowlevel',
+        'openslide._openslide',
         'skimage',
         'skimage.feature',
         'skimage.transform',
@@ -96,6 +99,44 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
+def get_openslide_binaries():
+    """Get OpenSlide binary files for Windows"""
+    binaries = []
+    
+    try:
+        import openslide
+        from pathlib import Path
+        
+        openslide_path = Path(openslide.__file__).parent
+        
+        # Common locations for OpenSlide DLLs
+        possible_paths = [
+            openslide_path / "bin",
+            openslide_path / "_bin", 
+            openslide_path.parent / "openslide" / "bin",
+            Path(sys.prefix) / "Library" / "bin",  # Conda
+            Path(sys.prefix) / "Lib" / "site-packages" / "openslide" / "bin",
+        ]
+        
+        for path in possible_paths:
+            if path.exists():
+                for dll_file in path.glob("*.dll"):
+                    binaries.append((str(dll_file), "openslide_bin"))
+                break
+                
+        print(f"Found {len(binaries)} OpenSlide DLL files")
+        
+    except ImportError:
+        print("OpenSlide not found - skipping DLL collection")
+    except Exception as e:
+        print(f"Error collecting OpenSlide DLLs: {e}")
+    
+    return binaries
+
+# Add OpenSlide binaries
+openslide_binaries = get_openslide_binaries()
+a.binaries += openslide_binaries
 
 # Collect all PyQt6 and other packages
 from PyInstaller.utils.hooks import collect_all
@@ -170,6 +211,36 @@ def build_executable():
     if not create_pyinstaller_spec():
         return False
     
+    # Verify OpenSlide installation
+    print("\n=== Checking OpenSlide ===")
+    try:
+        import openslide
+        print(f"✓ OpenSlide found: {openslide.__version__}")
+        
+        # Check for DLL files
+        from pathlib import Path
+        openslide_path = Path(openslide.__file__).parent
+        possible_paths = [
+            openslide_path / "bin",
+            openslide_path / "_bin",
+            openslide_path.parent / "openslide" / "bin",
+        ]
+        
+        dll_count = 0
+        for path in possible_paths:
+            if path.exists():
+                dll_count = len(list(path.glob("*.dll")))
+                if dll_count > 0:
+                    print(f"✓ Found {dll_count} OpenSlide DLLs in {path}")
+                    break
+        
+        if dll_count == 0:
+            print("⚠ Warning: No OpenSlide DLLs found - may cause runtime errors")
+            
+    except ImportError:
+        print("❌ OpenSlide not installed - install with: pip install openslide-python")
+        return False
+    
     # Build with PyInstaller
     cmd = [
         sys.executable, "-m", "PyInstaller", 
@@ -180,6 +251,17 @@ def build_executable():
     if not run_command(cmd):
         print("PyInstaller build failed")
         return False
+    
+    # Verify OpenSlide DLLs in build
+    print("\n=== Verifying Build ===")
+    openslide_bin_path = Path("dist/TissueFragmentStitching/openslide_bin")
+    if openslide_bin_path.exists():
+        dll_files = list(openslide_bin_path.glob("*.dll"))
+        print(f"✓ {len(dll_files)} OpenSlide DLLs included in build")
+        for dll in dll_files:
+            print(f"  - {dll.name}")
+    else:
+        print("⚠ Warning: openslide_bin folder not found in build")
     
     # Verify the build
     exe_path = "dist/TissueFragmentStitching/TissueFragmentStitching.exe"
