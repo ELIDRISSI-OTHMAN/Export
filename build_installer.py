@@ -61,8 +61,15 @@ a = Analysis(
         'PyQt6.sip',
         'PyQt6.QtPrintSupport',
         'PyQt6.QtSvg',
+        'PyQt6.QtOpenGL',
+        'PyQt6.QtNetwork',
+        'PyQt6.QtMultimedia',
+        'PyQt6.QtWebEngineWidgets',
         'cv2',
         'numpy',
+        'numpy.core',
+        'numpy.core._methods',
+        'numpy.lib.format',
         'PIL',
         'PIL.Image',
         'openslide',
@@ -90,6 +97,26 @@ a = Analysis(
     noarchive=False,
 )
 
+# Collect all PyQt6 and other packages
+from PyInstaller.utils.hooks import collect_all
+
+# Collect PyQt6
+pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all('PyQt6')
+a.datas += pyqt6_datas
+a.binaries += pyqt6_binaries
+a.hiddenimports += pyqt6_hiddenimports
+
+# Collect cv2
+cv2_datas, cv2_binaries, cv2_hiddenimports = collect_all('cv2')
+a.datas += cv2_datas
+a.binaries += cv2_binaries
+a.hiddenimports += cv2_hiddenimports
+
+# Collect numpy
+numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
+a.datas += numpy_datas
+a.binaries += numpy_binaries
+a.hiddenimports += numpy_hiddenimports
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -102,7 +129,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # Enable console for debugging
+    console=False,  # Disable console for release
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -148,9 +175,6 @@ def build_executable():
         sys.executable, "-m", "PyInstaller", 
         "--clean", 
         "--log-level=INFO",
-        "--collect-all", "PyQt6",
-        "--collect-all", "cv2", 
-        "--collect-all", "numpy",
         "app.spec"
     ]
     if not run_command(cmd):
