@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Build script for creating installers for different platforms
+Build script for creating simple click-to-install executables
+Creates .exe for Windows, .dmg for macOS, .deb for Linux
 """
 
 import os
@@ -20,41 +21,25 @@ def run_command(cmd, cwd=None):
     print(f"Success: {result.stdout}")
     return True
 
-def install_build_tools():
-    """Install required build tools"""
-    print("Installing build tools...")
+def install_build_dependencies():
+    """Install all required build tools"""
+    print("Installing build dependencies...")
     
-    # Install PyInstaller
-    if not run_command([sys.executable, "-m", "pip", "install", "pyinstaller"]):
-        return False
+    dependencies = [
+        "pyinstaller>=5.0",
+        "auto-py-to-exe",  # GUI for PyInstaller
+    ]
     
-    # Install cx_Freeze as alternative
-    if not run_command([sys.executable, "-m", "pip", "install", "cx_Freeze"]):
-        print("Warning: cx_Freeze installation failed, continuing with PyInstaller only")
-    
-    # Platform-specific installers
-    system = platform.system().lower()
-    
-    if system == "windows":
-        # Install NSIS for Windows installer
-        print("For Windows installer, please install NSIS from: https://nsis.sourceforge.io/")
-        if not run_command([sys.executable, "-m", "pip", "install", "pynsist"]):
-            print("Warning: pynsist installation failed")
-    
-    elif system == "darwin":  # macOS
-        # Install create-dmg for macOS
-        if not run_command([sys.executable, "-m", "pip", "install", "dmgbuild"]):
-            print("Warning: dmgbuild installation failed")
+    for dep in dependencies:
+        if not run_command([sys.executable, "-m", "pip", "install", dep]):
+            print(f"Failed to install {dep}")
+            return False
     
     return True
 
-def build_pyinstaller():
-    """Build executable using PyInstaller"""
-    print("\n=== Building with PyInstaller ===")
-    
-    # Create PyInstaller spec file
-    spec_content = '''
-# -*- mode: python ; coding: utf-8 -*-
+def create_pyinstaller_spec():
+    """Create PyInstaller spec file for consistent builds"""
+    spec_content = '''# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
@@ -66,7 +51,6 @@ a = Analysis(
         ('src', 'src'),
         ('README.md', '.'),
         ('README_FR.md', '.'),
-        ('requirements.txt', '.'),
     ],
     hiddenimports=[
         'PyQt6.QtCore',
@@ -76,16 +60,25 @@ a = Analysis(
         'cv2',
         'numpy',
         'PIL',
+        'PIL.Image',
         'openslide',
         'skimage',
+        'skimage.feature',
+        'skimage.transform',
         'scipy',
+        'scipy.optimize',
         'matplotlib',
         'tifffile',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'tkinter',
+        'matplotlib.tests',
+        'numpy.tests',
+        'scipy.tests',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -125,176 +118,109 @@ coll = COLLECT(
 )
 '''
     
-    with open('tissue_fragment_stitching.spec', 'w') as f:
+    with open('app.spec', 'w') as f:
         f.write(spec_content)
     
+    return True
+
+def build_executable():
+    """Build the executable using PyInstaller"""
+    print("\n=== Building Executable ===")
+    
+    # Create spec file
+    if not create_pyinstaller_spec():
+        return False
+    
     # Build with PyInstaller
-    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "tissue_fragment_stitching.spec"]
-    return run_command(cmd)
-
-def build_cx_freeze():
-    """Build executable using cx_Freeze"""
-    print("\n=== Building with cx_Freeze ===")
+    cmd = [sys.executable, "-m", "PyInstaller", "--clean", "app.spec"]
+    if not run_command(cmd):
+        print("PyInstaller build failed")
+        return False
     
-    setup_cx = '''
-import sys
-from cx_Freeze import setup, Executable
-
-# Dependencies are automatically detected, but it might need fine tuning.
-build_options = {
-    'packages': [
-        'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets', 'PyQt6.QtOpenGLWidgets',
-        'cv2', 'numpy', 'PIL', 'openslide', 'skimage', 'scipy', 'matplotlib', 'tifffile'
-    ],
-    'excludes': ['tkinter'],
-    'include_files': [
-        ('src/', 'src/'),
-        ('README.md', 'README.md'),
-        ('README_FR.md', 'README_FR.md'),
-    ],
-}
-
-base = 'Win32GUI' if sys.platform == 'win32' else None
-
-executables = [
-    Executable(
-        'main.py',
-        base=base,
-        target_name='TissueFragmentStitching',
-        icon='icon.ico' if sys.platform == 'win32' else None
-    )
-]
-
-setup(
-    name='TissueFragmentStitching',
-    version='1.0.0',
-    description='Tissue Fragment Arrangement and Rigid Stitching UI',
-    options={'build_exe': build_options},
-    executables=executables
-)
-'''
-    
-    with open('setup_cx.py', 'w') as f:
-        f.write(setup_cx)
-    
-    cmd = [sys.executable, "setup_cx.py", "build"]
-    return run_command(cmd)
+    print("✓ Executable built successfully")
+    return True
 
 def create_windows_installer():
-    """Create Windows installer using NSIS"""
+    """Create Windows .exe installer using Inno Setup script"""
     print("\n=== Creating Windows Installer ===")
     
-    nsis_script = '''
-!define APPNAME "Tissue Fragment Stitching"
-!define COMPANYNAME "Scientific Imaging Lab"
-!define DESCRIPTION "Professional desktop application for tissue fragment visualization and stitching"
-!define VERSIONMAJOR 1
-!define VERSIONMINOR 0
-!define VERSIONBUILD 0
+    # Create Inno Setup script
+    inno_script = '''[Setup]
+AppName=Tissue Fragment Stitching
+AppVersion=1.0.0
+AppPublisher=Scientific Imaging Lab
+AppPublisherURL=https://github.com/yourusername/tissue-fragment-stitching
+AppSupportURL=https://github.com/yourusername/tissue-fragment-stitching/issues
+AppUpdatesURL=https://github.com/yourusername/tissue-fragment-stitching/releases
+DefaultDirName={autopf}\\TissueFragmentStitching
+DefaultGroupName=Tissue Fragment Stitching
+AllowNoIcons=yes
+LicenseFile=LICENSE
+OutputDir=installers
+OutputBaseFilename=TissueFragmentStitching-Setup
+SetupIconFile=icon.ico
+Compression=lzma
+SolidCompression=yes
+WizardStyle=modern
+PrivilegesRequired=admin
 
-!define HELPURL "https://github.com/yourusername/tissue-fragment-stitching"
-!define UPDATEURL "https://github.com/yourusername/tissue-fragment-stitching/releases"
-!define ABOUTURL "https://github.com/yourusername/tissue-fragment-stitching"
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "french"; MessagesFile: "compiler:Languages\\French.isl"
 
-!define INSTALLSIZE 500000  # Estimate in KB
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
-RequestExecutionLevel admin
+[Files]
+Source: "dist\\TissueFragmentStitching\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-InstallDir "$PROGRAMFILES\\${COMPANYNAME}\\${APPNAME}"
+[Icons]
+Name: "{group}\\Tissue Fragment Stitching"; Filename: "{app}\\TissueFragmentStitching.exe"
+Name: "{group}\\{cm:UninstallProgram,Tissue Fragment Stitching}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\\Tissue Fragment Stitching"; Filename: "{app}\\TissueFragmentStitching.exe"; Tasks: desktopicon
 
-Name "${APPNAME}"
-Icon "icon.ico"
-outFile "TissueFragmentStitching-Setup.exe"
+[Run]
+Filename: "{app}\\TissueFragmentStitching.exe"; Description: "{cm:LaunchProgram,Tissue Fragment Stitching}"; Flags: nowait postinstall skipifsilent
 
-!include LogicLib.nsh
-
-page components
-page directory
-page instfiles
-
-!macro VerifyUserIsAdmin
-UserInfo::GetAccountType
-pop $0
-${If} $0 != "admin"
-    messageBox mb_iconstop "Administrator rights required!"
-    setErrorLevel 740
-    quit
-${EndIf}
-!macroend
-
-function .onInit
-    setShellVarContext all
-    !insertmacro VerifyUserIsAdmin
-functionEnd
-
-section "install"
-    setOutPath $INSTDIR
-    
-    # Copy files
-    file /r "dist\\TissueFragmentStitching\\*"
-    
-    # Create uninstaller
-    writeUninstaller "$INSTDIR\\uninstall.exe"
-    
-    # Start Menu
-    createDirectory "$SMPROGRAMS\\${COMPANYNAME}"
-    createShortCut "$SMPROGRAMS\\${COMPANYNAME}\\${APPNAME}.lnk" "$INSTDIR\\TissueFragmentStitching.exe" "" "$INSTDIR\\TissueFragmentStitching.exe"
-    
-    # Desktop shortcut
-    createShortCut "$DESKTOP\\${APPNAME}.lnk" "$INSTDIR\\TissueFragmentStitching.exe" "" "$INSTDIR\\TissueFragmentStitching.exe"
-    
-    # Registry information for add/remove programs
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "DisplayName" "${APPNAME}"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "UninstallString" "$INSTDIR\\uninstall.exe"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "InstallLocation" "$INSTDIR"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "DisplayIcon" "$INSTDIR\\TissueFragmentStitching.exe"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "Publisher" "${COMPANYNAME}"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "HelpLink" "${HELPURL}"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "URLUpdateInfo" "${UPDATEURL}"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "URLInfoAbout" "${ABOUTURL}"
-    WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "DisplayVersion" "${VERSIONMAJOR}.${VERSIONMINOR}.${VERSIONBUILD}"
-    WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "VersionMajor" ${VERSIONMAJOR}
-    WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "VersionMinor" ${VERSIONMINOR}
-    WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "NoModify" 1
-    WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "NoRepair" 1
-    WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}" "EstimatedSize" ${INSTALLSIZE}
-sectionEnd
-
-section "uninstall"
-    # Remove Start Menu launcher
-    delete "$SMPROGRAMS\\${COMPANYNAME}\\${APPNAME}.lnk"
-    rmDir "$SMPROGRAMS\\${COMPANYNAME}"
-    
-    # Remove desktop shortcut
-    delete "$DESKTOP\\${APPNAME}.lnk"
-    
-    # Remove files
-    rmDir /r "$INSTDIR"
-    
-    # Remove uninstaller information from the registry
-    DeleteRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${COMPANYNAME} ${APPNAME}"
-sectionEnd
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}"
 '''
     
-    with open('installer.nsi', 'w') as f:
-        f.write(nsis_script)
+    # Create installers directory
+    os.makedirs('installers', exist_ok=True)
     
-    print("NSIS script created. To build installer:")
-    print("1. Install NSIS from https://nsis.sourceforge.io/")
-    print("2. Run: makensis installer.nsi")
+    with open('installer.iss', 'w') as f:
+        f.write(inno_script)
+    
+    print("Inno Setup script created: installer.iss")
+    print("\nTo create Windows installer:")
+    print("1. Download and install Inno Setup from: https://jrsoftware.org/isinfo.php")
+    print("2. Open installer.iss in Inno Setup")
+    print("3. Click Build > Compile")
+    print("4. The installer will be created in the 'installers' folder")
+    
+    return True
 
 def create_macos_installer():
-    """Create macOS installer"""
+    """Create macOS .dmg installer"""
     print("\n=== Creating macOS Installer ===")
     
-    # Create app bundle structure
     app_name = "TissueFragmentStitching.app"
+    
+    # Create app bundle structure
     app_path = f"dist/{app_name}"
+    contents_path = f"{app_path}/Contents"
+    macos_path = f"{contents_path}/MacOS"
+    resources_path = f"{contents_path}/Resources"
     
-    os.makedirs(f"{app_path}/Contents/MacOS", exist_ok=True)
-    os.makedirs(f"{app_path}/Contents/Resources", exist_ok=True)
+    os.makedirs(macos_path, exist_ok=True)
+    os.makedirs(resources_path, exist_ok=True)
     
-    # Info.plist
+    # Copy executable
+    if os.path.exists("dist/TissueFragmentStitching"):
+        shutil.copytree("dist/TissueFragmentStitching", macos_path, dirs_exist_ok=True)
+    
+    # Create Info.plist
     info_plist = '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -304,6 +230,8 @@ def create_macos_installer():
     <key>CFBundleIdentifier</key>
     <string>com.scientificimaging.tissuefragmentstitching</string>
     <key>CFBundleName</key>
+    <string>Tissue Fragment Stitching</string>
+    <key>CFBundleDisplayName</key>
     <string>Tissue Fragment Stitching</string>
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
@@ -317,114 +245,231 @@ def create_macos_installer():
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>10.14</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
 </dict>
 </plist>'''
     
-    with open(f"{app_path}/Contents/Info.plist", 'w') as f:
+    with open(f"{contents_path}/Info.plist", 'w') as f:
         f.write(info_plist)
     
-    print(f"macOS app bundle created at {app_path}")
-    print("To create DMG, install dmgbuild and run:")
-    print(f"dmgbuild 'Tissue Fragment Stitching' TissueFragmentStitching.dmg -s dmg_settings.py")
+    # Create DMG creation script
+    dmg_script = f'''#!/bin/bash
+# Create DMG installer for macOS
 
-def create_linux_package():
-    """Create Linux package"""
-    print("\n=== Creating Linux Package ===")
+APP_NAME="Tissue Fragment Stitching"
+DMG_NAME="TissueFragmentStitching-Installer"
+APP_PATH="dist/{app_name}"
+
+# Create temporary DMG directory
+mkdir -p dmg_temp
+cp -R "$APP_PATH" dmg_temp/
+
+# Create Applications symlink
+ln -s /Applications dmg_temp/Applications
+
+# Create DMG
+hdiutil create -volname "$APP_NAME" -srcfolder dmg_temp -ov -format UDZO "installers/$DMG_NAME.dmg"
+
+# Cleanup
+rm -rf dmg_temp
+
+echo "DMG created: installers/$DMG_NAME.dmg"
+'''
     
-    # Create .desktop file
+    with open('create_dmg.sh', 'w') as f:
+        f.write(dmg_script)
+    
+    os.chmod('create_dmg.sh', 0o755)
+    
+    print(f"macOS app bundle created: {app_path}")
+    print("To create DMG installer:")
+    print("1. Run: ./create_dmg.sh")
+    print("2. The .dmg file will be in the 'installers' folder")
+    
+    return True
+
+def create_linux_installer():
+    """Create Linux .deb package"""
+    print("\n=== Creating Linux Installer ===")
+    
+    # Create debian package structure
+    pkg_name = "tissue-fragment-stitching"
+    pkg_version = "1.0.0"
+    pkg_dir = f"debian_package/{pkg_name}_{pkg_version}"
+    
+    # Create directory structure
+    debian_dir = f"{pkg_dir}/DEBIAN"
+    opt_dir = f"{pkg_dir}/opt/TissueFragmentStitching"
+    apps_dir = f"{pkg_dir}/usr/share/applications"
+    bin_dir = f"{pkg_dir}/usr/local/bin"
+    
+    os.makedirs(debian_dir, exist_ok=True)
+    os.makedirs(opt_dir, exist_ok=True)
+    os.makedirs(apps_dir, exist_ok=True)
+    os.makedirs(bin_dir, exist_ok=True)
+    
+    # Copy application files
+    if os.path.exists("dist/TissueFragmentStitching"):
+        shutil.copytree("dist/TissueFragmentStitching", opt_dir, dirs_exist_ok=True)
+    
+    # Create control file
+    control_content = f'''Package: {pkg_name}
+Version: {pkg_version}
+Section: science
+Priority: optional
+Architecture: amd64
+Depends: libc6, libgl1-mesa-glx
+Maintainer: Scientific Imaging Lab <contact@example.com>
+Description: Tissue Fragment Arrangement and Rigid Stitching
+ Professional desktop application for visualizing, manipulating, and stitching
+ multiple tissue image fragments from pyramidal TIFF files.
+ .
+ Features include high-resolution image support, interactive canvas,
+ fragment manipulation, real-time updates, and export capabilities.
+'''
+    
+    with open(f"{debian_dir}/control", 'w') as f:
+        f.write(control_content)
+    
+    # Create desktop file
     desktop_content = '''[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Tissue Fragment Stitching
-Comment=Professional desktop application for tissue fragment visualization and stitching
+Comment=Professional tissue fragment visualization and stitching
 Exec=/opt/TissueFragmentStitching/TissueFragmentStitching
 Icon=/opt/TissueFragmentStitching/icon.png
 Terminal=false
-Categories=Science;Education;
+Categories=Science;Education;Graphics;
+StartupNotify=true
 '''
     
-    with open('TissueFragmentStitching.desktop', 'w') as f:
+    with open(f"{apps_dir}/tissue-fragment-stitching.desktop", 'w') as f:
         f.write(desktop_content)
     
-    # Create install script
-    install_script = '''#!/bin/bash
-# Install script for Tissue Fragment Stitching
-
-set -e
-
-echo "Installing Tissue Fragment Stitching..."
-
-# Create installation directory
-sudo mkdir -p /opt/TissueFragmentStitching
-
-# Copy files
-sudo cp -r dist/TissueFragmentStitching/* /opt/TissueFragmentStitching/
-
-# Make executable
-sudo chmod +x /opt/TissueFragmentStitching/TissueFragmentStitching
-
-# Install desktop file
-sudo cp TissueFragmentStitching.desktop /usr/share/applications/
-
-# Create symlink
-sudo ln -sf /opt/TissueFragmentStitching/TissueFragmentStitching /usr/local/bin/tissue-fragment-stitching
-
-echo "Installation complete!"
-echo "You can now run the application from the applications menu or by typing 'tissue-fragment-stitching' in terminal."
+    # Create symlink script
+    postinst_content = '''#!/bin/bash
+# Create symlink for command line access
+ln -sf /opt/TissueFragmentStitching/TissueFragmentStitching /usr/local/bin/tissue-fragment-stitching
+# Update desktop database
+update-desktop-database /usr/share/applications
 '''
     
-    with open('install.sh', 'w') as f:
-        f.write(install_script)
+    with open(f"{debian_dir}/postinst", 'w') as f:
+        f.write(postinst_content)
     
-    os.chmod('install.sh', 0o755)
+    os.chmod(f"{debian_dir}/postinst", 0o755)
     
-    print("Linux installation files created:")
-    print("- TissueFragmentStitching.desktop")
-    print("- install.sh")
+    # Create removal script
+    prerm_content = '''#!/bin/bash
+# Remove symlink
+rm -f /usr/local/bin/tissue-fragment-stitching
+'''
+    
+    with open(f"{debian_dir}/prerm", 'w') as f:
+        f.write(prerm_content)
+    
+    os.chmod(f"{debian_dir}/prerm", 0o755)
+    
+    # Create build script
+    build_deb_script = f'''#!/bin/bash
+# Build .deb package
+
+PKG_DIR="debian_package/{pkg_name}_{pkg_version}"
+
+# Set permissions
+find "$PKG_DIR" -type d -exec chmod 755 {{}} \\;
+find "$PKG_DIR" -type f -exec chmod 644 {{}} \\;
+chmod 755 "$PKG_DIR/opt/TissueFragmentStitching/TissueFragmentStitching"
+chmod 755 "$PKG_DIR/DEBIAN/postinst"
+chmod 755 "$PKG_DIR/DEBIAN/prerm"
+
+# Build package
+dpkg-deb --build "$PKG_DIR" "installers/{pkg_name}_{pkg_version}_amd64.deb"
+
+echo "Debian package created: installers/{pkg_name}_{pkg_version}_amd64.deb"
+'''
+    
+    with open('build_deb.sh', 'w') as f:
+        f.write(build_deb_script)
+    
+    os.chmod('build_deb.sh', 0o755)
+    
+    print("Debian package structure created")
+    print("To create .deb installer:")
+    print("1. Run: ./build_deb.sh")
+    print("2. The .deb file will be in the 'installers' folder")
+    print("3. Users can install with: sudo dpkg -i package.deb")
+    
+    return True
 
 def main():
     """Main build function"""
     print("=== Tissue Fragment Stitching Installer Builder ===")
+    print("Creating simple click-to-install executables...\n")
     
-    # Install build tools
-    if not install_build_tools():
-        print("Failed to install build tools")
+    # Create installers directory
+    os.makedirs('installers', exist_ok=True)
+    
+    # Install dependencies
+    if not install_build_dependencies():
+        print("❌ Failed to install build dependencies")
         return False
     
-    # Create dist directory
-    os.makedirs('dist', exist_ok=True)
-    
     # Build executable
-    success = False
-    
-    # Try PyInstaller first
-    if build_pyinstaller():
-        success = True
-        print("✓ PyInstaller build successful")
-    else:
-        print("✗ PyInstaller build failed, trying cx_Freeze...")
-        if build_cx_freeze():
-            success = True
-            print("✓ cx_Freeze build successful")
-        else:
-            print("✗ Both PyInstaller and cx_Freeze failed")
-            return False
-    
-    if not success:
+    if not build_executable():
+        print("❌ Failed to build executable")
         return False
     
     # Create platform-specific installers
     system = platform.system().lower()
+    
+    print(f"\n=== Creating Installers for {system.title()} ===")
     
     if system == "windows":
         create_windows_installer()
     elif system == "darwin":
         create_macos_installer()
     else:  # Linux
-        create_linux_package()
+        create_linux_installer()
     
-    print("\n=== Build Complete ===")
-    print("Check the 'dist' directory for the built application")
+    print("\n" + "="*50)
+    print("🎉 BUILD COMPLETE!")
+    print("="*50)
+    print("\n📁 Files created:")
+    print("   • dist/TissueFragmentStitching/ - Application files")
+    
+    if system == "windows":
+        print("   • installer.iss - Inno Setup script")
+        print("   • Future: installers/TissueFragmentStitching-Setup.exe")
+    elif system == "darwin":
+        print("   • dist/TissueFragmentStitching.app - macOS app bundle")
+        print("   • create_dmg.sh - DMG creation script")
+        print("   • Future: installers/TissueFragmentStitching-Installer.dmg")
+    else:
+        print("   • debian_package/ - Debian package structure")
+        print("   • build_deb.sh - DEB creation script")
+        print("   • Future: installers/tissue-fragment-stitching_1.0.0_amd64.deb")
+    
+    print("\n📋 Next steps:")
+    if system == "windows":
+        print("   1. Install Inno Setup from: https://jrsoftware.org/isinfo.php")
+        print("   2. Open installer.iss in Inno Setup")
+        print("   3. Click Build > Compile")
+        print("   4. Share the .exe installer with users")
+    elif system == "darwin":
+        print("   1. Run: ./create_dmg.sh")
+        print("   2. Share the .dmg installer with users")
+    else:
+        print("   1. Run: ./build_deb.sh")
+        print("   2. Share the .deb installer with users")
+    
+    print("\n✨ Users will be able to:")
+    print("   • Double-click the installer")
+    print("   • Click Next > Next > Install")
+    print("   • Launch from Start Menu/Applications")
+    print("   • No Python or technical knowledge required!")
     
     return True
 

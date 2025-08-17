@@ -1,0 +1,16 @@
+# Build requirements for creating installers
+# Install with: pip install -r requirements_build.txt
+
+# Core build tools
+pyinstaller>=5.0
+auto-py-to-exe>=2.0
+
+# Platform-specific tools (install as needed)
+# Windows: Inno Setup (download separately)
+# macOS: dmgbuild (optional, can use built-in hdiutil)
+# Linux: dpkg (usually pre-installed)
+
+# Optional advanced tools
+cx_Freeze>=6.0  # Alternative to PyInstaller
+setuptools>=65.0
+wheel>=0.38.0
