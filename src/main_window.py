@@ -107,6 +107,7 @@ class MainWindow(QMainWindow):
         
         # Control panel connections
         self.control_panel.transform_requested.connect(self.apply_transform)
+        self.control_panel.group_transform_requested.connect(self.apply_group_transform)
         self.control_panel.reset_transform_requested.connect(self.reset_fragment_transform)
         
         # Canvas connections
@@ -484,6 +485,15 @@ class MainWindow(QMainWindow):
             elif transform_type == 'set_visibility':
                 self.fragment_manager.set_fragment_visibility(fragment_id, value)
             
+    def apply_group_transform(self, transform_type: str, fragment_ids: List[str]):
+        """Apply transformation to a group of fragments"""
+        print(f"Applying group transform: {transform_type} to {len(fragment_ids)} fragments")
+        
+        if transform_type == 'rotate_cw':
+            self.fragment_manager.rotate_group(fragment_ids, 90)
+        elif transform_type == 'rotate_ccw':
+            self.fragment_manager.rotate_group(fragment_ids, -90)
+        
     def reset_fragment_transform(self, fragment_id: str):
         """Reset fragment transformation"""
         self.fragment_manager.reset_fragment_transform(fragment_id)

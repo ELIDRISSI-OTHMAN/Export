@@ -15,6 +15,7 @@ class ControlPanel(QWidget):
     """Control panel for fragment transformation and properties"""
     
     transform_requested = pyqtSignal(str, str, object)  # fragment_id, transform_type, value
+    group_transform_requested = pyqtSignal(str, list)  # transform_type, fragment_ids
     reset_transform_requested = pyqtSignal(str)  # fragment_id
     
     def __init__(self):
@@ -188,14 +189,12 @@ class ControlPanel(QWidget):
         
     def request_group_rotation(self, direction: str):
         """Request group rotation"""
-        if self.is_group_selected and len(self.selected_fragment_ids) > 1:
+        if len(self.selected_fragment_ids) > 1:
             print(f"Requesting group rotation {direction} for fragments: {self.selected_fragment_ids}")
             if direction == 'cw':
-                self.transform_requested.emit('group', 'rotate_cw', self.selected_fragment_ids)
+                self.group_transform_requested.emit('rotate_cw', self.selected_fragment_ids)
             elif direction == 'ccw':
-                self.transform_requested.emit('group', 'rotate_ccw', self.selected_fragment_ids)
-        else:
-            print(f"Cannot rotate group: is_group_selected={self.is_group_selected}, fragment_count={len(self.selected_fragment_ids)}")
+                self.group_transform_requested.emit('rotate_ccw', self.selected_fragment_ids)
     
     def request_group_translation(self, dx: float, dy: float):
         """Request group translation"""
