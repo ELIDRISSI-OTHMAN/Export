@@ -123,6 +123,11 @@ def build_executable():
         "--exclude-module", "scipy.tests",
         "--exclude-module", "torch",
         "--exclude-module", "tensorflow",
+        "--exclude-module", "jupyter",
+        "--exclude-module", "IPython",
+        
+        # Runtime options to help with DLL loading
+        "--runtime-tmpdir", ".",
         
         "main.py"
     ]
