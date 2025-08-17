@@ -203,8 +203,11 @@ def build_executable():
     ]
     
     # Add OpenSlide DLLs
-    for dll in openslide_dlls:
-        cmd.extend(["--add-binary", f"{dll};."])
+    if openslide_dlls:
+        for dll in openslide_dlls:
+            cmd.extend(["--add-binary", f"{dll};."])
+    else:
+        print("WARNING: No OpenSlide DLLs found - OpenSlide functionality may not work")
     
     # Run PyInstaller
     if not run_command(cmd):
