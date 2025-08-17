@@ -248,6 +248,8 @@ class FragmentManager(QObject):
         
         # Rotate each fragment around the group center
         for fragment in fragments:
+            print(f"Rotating fragment {fragment.name} by {angle} degrees around group center ({center_x}, {center_y})")
+            
             # Get fragment's current center
             bbox = fragment.get_bounding_box()
             fragment_center_x = bbox[0] + bbox[2] / 2
@@ -265,16 +267,18 @@ class FragmentManager(QObject):
             new_center_x = center_x + new_rel_x
             new_center_y = center_y + new_rel_y
             
-            # Convert back to top-left position
-            # Note: We need to recalculate bbox after rotation
+            # Apply individual rotation first
             fragment.rotation = (fragment.rotation + angle) % 360.0
             fragment.invalidate_cache()
             
-            # Get new bounding box after rotation
+            # Get new bounding box after individual rotation
             new_bbox = fragment.get_bounding_box()
+            
+            # Set position so fragment center is at the rotated position
             fragment.x = new_center_x - new_bbox[2] / 2  # center_x - width/2
             fragment.y = new_center_y - new_bbox[3] / 2  # center_y - height/2
             
+        print(f"Group rotation completed for {len(fragments)} fragments")
         self.fragments_changed.emit()
     
     def flip_fragment(self, fragment_id: str, horizontal: bool = True):
