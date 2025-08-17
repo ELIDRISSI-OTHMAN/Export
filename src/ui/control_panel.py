@@ -188,16 +188,22 @@ class ControlPanel(QWidget):
         
     def request_group_rotation(self, direction: str):
         """Request group rotation"""
-        if self.is_group_selected and self.selected_fragment_ids:
+        if self.is_group_selected and len(self.selected_fragment_ids) > 1:
+            print(f"Requesting group rotation {direction} for fragments: {self.selected_fragment_ids}")
             if direction == 'cw':
                 self.transform_requested.emit('group', 'rotate_cw', self.selected_fragment_ids)
             elif direction == 'ccw':
                 self.transform_requested.emit('group', 'rotate_ccw', self.selected_fragment_ids)
+        else:
+            print(f"Cannot rotate group: is_group_selected={self.is_group_selected}, fragment_count={len(self.selected_fragment_ids)}")
     
     def request_group_translation(self, dx: float, dy: float):
         """Request group translation"""
-        if self.is_group_selected and self.selected_fragment_ids:
+        if self.is_group_selected and len(self.selected_fragment_ids) > 1:
+            print(f"Requesting group translation ({dx}, {dy}) for fragments: {self.selected_fragment_ids}")
             self.transform_requested.emit('group', 'translate', (self.selected_fragment_ids, (dx, dy)))
+        else:
+            print(f"Cannot translate group: is_group_selected={self.is_group_selected}, fragment_count={len(self.selected_fragment_ids)}")
     
     def setup_info_group(self):
         """Setup fragment information display"""
@@ -383,6 +389,11 @@ class ControlPanel(QWidget):
             
             # Update group info
             self.group_name_label.setText(f"Group Selection ({len(fragment_ids)} fragments)")
+        else:
+            # Single fragment or no selection - switch to fragment tab
+            self.tab_widget.setCurrentWidget(self.fragment_tab)
+            self.fragment_tab.setEnabled(True)
+            self.group_tab.setEnabled(False)
         
         self.update_controls()
         
@@ -391,22 +402,27 @@ class ControlPanel(QWidget):
         has_fragment = self.current_fragment is not None or self.is_group_selected
         
         if self.is_group_selected:
-            # Enable all group controls
-            self.group_rotation_group.setEnabled(True)
-            self.group_movement_group.setEnabled(True)
-            self.group_reset_btn.setEnabled(True)
+            # Enable all group controls when group is selected
+            self.group_rotation_group.setEnabled(len(self.selected_fragment_ids) > 1)
+            self.group_movement_group.setEnabled(len(self.selected_fragment_ids) > 1)
+            self.group_reset_btn.setEnabled(len(self.selected_fragment_ids) > 1)
             
-            # Enable individual group buttons
-            self.group_rotate_ccw_btn.setEnabled(True)
-            self.group_rotate_cw_btn.setEnabled(True)
-            self.group_up_btn.setEnabled(True)
-            self.group_down_btn.setEnabled(True)
-            self.group_left_btn.setEnabled(True)
-            self.group_right_btn.setEnabled(True)
-            self.group_center_btn.setEnabled(True)
+            # Enable individual group buttons only when we have multiple fragments
+            has_multiple = len(self.selected_fragment_ids) > 1
+            self.group_rotate_ccw_btn.setEnabled(has_multiple)
+            self.group_rotate_cw_btn.setEnabled(has_multiple)
+            self.group_up_btn.setEnabled(has_multiple)
+            self.group_down_btn.setEnabled(has_multiple)
+            self.group_left_btn.setEnabled(has_multiple)
+            self.group_right_btn.setEnabled(has_multiple)
+            self.group_center_btn.setEnabled(has_multiple)
             
             # Update group info
             self.group_name_label.setText(f"Group Selection ({len(self.selected_fragment_ids)} fragments)")
+            
+            # Make sure the group tab is enabled and visible
+            self.group_tab.setEnabled(True)
+            self.fragment_tab.setEnabled(False)
             
         elif has_fragment and not self.is_group_selected:
             # Single fragment selection - enable everything
